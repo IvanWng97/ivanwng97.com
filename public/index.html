@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ivan</title>
+<meta name="description" content="Mobile dev. Building small things in my spare time.">
+<meta property="og:title" content="Ivan">
+<meta property="og:description" content="Mobile dev. Building small things in my spare time.">
+<meta property="og:url" content="https://ivanwng97.com/">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/39482599?v=4&s=400">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="https://avatars.githubusercontent.com/u/39482599?v=4&s=64">
+<link rel="canonical" href="https://ivanwng97.com/">
+<style>
+  :root {
+    --bg: #f7f5f2;
+    --card: #ffffff;
+    --text: #1d1b19;
+    --muted: #5c5752;
+    --line: #e4dfd8;
+    --accent: #b3530c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141518;
+      --card: #1d1f23;
+      --text: #ecebe8;
+      --muted: #a7a39d;
+      --line: #2e3136;
+      --accent: #f2a65a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  main {
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 4rem 1rem 3rem;
+  }
+  header { text-align: center; margin-bottom: 2.5rem; }
+  .avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+  }
+  h1 { font-size: 1.6rem; margin: 1rem 0 .25rem; letter-spacing: -.01em; }
+  .bio { color: var(--muted); margin: 0; }
+  h2 {
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin: 2rem 0 .75rem;
+  }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+  a.row {
+    display: block;
+    padding: .9rem 1rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: inherit;
+    text-decoration: none;
+  }
+  a.row:hover { border-color: var(--accent); }
+  a.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .title { font-weight: 600; }
+  .sub { display: block; color: var(--muted); font-size: .9rem; margin-top: .15rem; }
+  .project picture img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-bottom: .75rem;
+    image-rendering: pixelated;
+  }
+  footer { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 3rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img class="avatar" src="https://avatars.githubusercontent.com/u/39482599?v=4&s=192" width="96" height="96" alt="">
+    <h1>Ivan</h1>
+    <p class="bio">Mobile dev. Building small things in my spare time.</p>
+  </header>
+
+  <section aria-labelledby="projects">
+    <h2 id="projects">Projects</h2>
+    <ul>
+      <li>
+        <a class="row project" href="https://pixtuoid.dev">
+          <picture>
+            <source srcset="/pixtuoid-dark.svg" media="(prefers-color-scheme: dark)">
+            <img src="/pixtuoid-light.svg" width="442" height="126" alt="pixtuoid: a neon office sign, a cat asleep on it and a coworker holding a coffee">
+          </picture>
+          <span class="title">pixtuoid</span>
+          <span class="sub">Your AI coding agents, visualized as pixel-art coworkers in a terminal office.</span>
+        </a>
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="elsewhere">
+    <h2 id="elsewhere">Elsewhere</h2>
+    <ul>
+      <li><a class="row" href="https://github.com/IvanWng97"><span class="title">GitHub</span><span class="sub">@IvanWng97</span></a></li>
+    </ul>
+  </section>
+
+  <footer>ivanwng97.com</footer>
+</main>
+</body>
+</html>
