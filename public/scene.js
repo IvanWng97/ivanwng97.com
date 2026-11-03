@@ -227,29 +227,45 @@ function build(renderer) {
   put(new THREE.SphereGeometry(0.19, 40, 28), skin, [0, -0.085, 0.03], head).scale.set(0.98, 0.66, 0.92);
   for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.042, 16, 12), skin, [s * 0.228, -0.015, -0.01], head).scale.set(0.55, 1, 0.9);
   put(new THREE.CapsuleGeometry(0.07, 0.06, 6, 12), skin, [0, -0.26, -0.01], head);
-  // Hair parted three-to-seven, the part on his right: a cap over the crown and back with the
-  // hairline high, the short side combed flat, and the long side sweeping across his forehead.
-  const PART = -0.09;
-  const cap = put(new THREE.SphereGeometry(0.258, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.015, -0.03], head);
-  cap.rotation.x = -0.62;
-  cap.scale.set(0.95, 1.03, 1);
-  const flat = put(new THREE.SphereGeometry(0.11, 24, 16), hair, [PART - 0.07, 0.185, 0.05], head);
-  flat.scale.set(0.8, 0.42, 1.5);
-  flat.rotation.z = 0.5;
-  const lift = put(new THREE.SphereGeometry(0.15, 32, 20), hair, [PART + 0.14, 0.22, 0.03], head);
-  lift.scale.set(1.1, 0.5, 1.3);
-  lift.rotation.set(0.15, 0, -0.18);
-  const sweep = put(new THREE.SphereGeometry(0.13, 32, 20), hair, [PART + 0.13, 0.17, 0.14], head);
-  sweep.scale.set(1.2, 0.4, 0.72);
-  sweep.rotation.set(0.5, 0.15, -0.32);
-  const tip = put(new THREE.SphereGeometry(0.07, 20, 14), hair, [0.125, 0.13, 0.165], head);
-  tip.scale.set(0.85, 0.42, 0.7);
-  tip.rotation.set(0.4, 0, -0.65);
-  const partLine = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(PART, 0.22, 0.15), new THREE.Vector3(PART - 0.004, 0.27, 0.03), new THREE.Vector3(PART - 0.008, 0.255, -0.09),
-  ]);
-  put(new THREE.TubeGeometry(partLine, 16, 0.006, 6), clay("#ecc4a6"), [0, 0, 0], head, { cast: false });
+  // Short sides: a cap over the back and sides, its front edge tilted back off the forehead.
+  const cap = put(new THREE.SphereGeometry(0.25, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.008, -0.03], head);
+  cap.rotation.x = -0.8;
   for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.065, 16, 12), hair, [s * 0.206, 0.075, -0.06], head).scale.set(0.33, 0.8, 1.05);
+  // The longer top, parted three-to-seven on his right: two shells over the cap, the long side
+  // fuller and combed across to his left, the short side down to his right, scalp in the part.
+  // A shell is a sphere band whose pole faces forward, so its azimuth runs around the face:
+  // PI is his left, 1.5 PI the crown line, 2 PI his right.
+  const PART = Math.PI * 1.5 + 0.33, GAP = 0.1;
+  const topHair = (r, y) => {
+    const g = new THREE.Group();
+    g.position.set(0, y, -0.01);
+    g.rotation.x = -0.18;
+    head.add(g);
+    return (from, to, hairline) => {
+      const shell = new THREE.SphereGeometry(r, 48, 32, from, to - from, hairline, Math.PI - hairline);
+      shell.rotateX(Math.PI / 2);
+      return put(shell, hair, [0, 0, 0], g);
+    };
+  };
+  topHair(0.28, 0.03)(Math.PI + 0.5, PART - GAP / 2, 0.6);
+  topHair(0.264, 0.01)(PART + GAP / 2, Math.PI * 2 - 0.75, 0.66);
+  const along = (r, phi, theta) => new THREE.Vector3(-r * Math.cos(phi) * Math.sin(theta), -r * Math.sin(phi) * Math.sin(theta), r * Math.cos(theta));
+  const scalp = new THREE.Group();
+  scalp.position.set(0, 0.016, -0.01);
+  scalp.rotation.x = -0.18;
+  head.add(scalp);
+  const partLine = new THREE.CatmullRomCurve3([0.66, 0.95, 1.25, 1.55].map((th) => along(0.262, PART, th)));
+  put(new THREE.TubeGeometry(partLine, 24, 0.007, 6), clay("#e9bfa0"), [0, 0, 0], scalp, { cast: false });
+  // Comb lines on the long side, sweeping from the part toward his left temple.
+  const sheen = clay("#433a47");
+  const combs = new THREE.Group();
+  combs.position.set(0, 0.03, -0.01);
+  combs.rotation.x = -0.18;
+  head.add(combs);
+  for (const [th, a0, len] of [[0.82, 0.75, 0.95], [1.12, 0.62, 1.05]]) {
+    const streak = put(new THREE.TorusGeometry(0.282 * Math.sin(th), 0.006, 5, 24, len), sheen, [0, 0, 0.282 * Math.cos(th)], combs, { cast: false });
+    streak.rotation.z = a0;
+  }
   // Dark oval eyes with a pinpoint of light, straight brows, a small nose and a short mouth line.
   const iris = toonMat({ color: "#1f1917" });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
