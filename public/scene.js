@@ -227,48 +227,51 @@ function build(renderer) {
   put(new THREE.SphereGeometry(0.19, 40, 28), skin, [0, -0.085, 0.03], head).scale.set(0.98, 0.66, 0.92);
   for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.042, 16, 12), skin, [s * 0.228, -0.015, -0.01], head).scale.set(0.55, 1, 0.9);
   put(new THREE.CapsuleGeometry(0.07, 0.06, 6, 12), skin, [0, -0.26, -0.01], head);
-  // Short sides: a cap over the back and sides, its front edge tilted back off the forehead.
-  const cap = put(new THREE.SphereGeometry(0.25, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.008, -0.03], head);
+  // A messy textured crop: short sides (a cap held close to the head), a choppy fringe falling to
+  // just above the brows and over the temples, and on top spikes standing up and out at random.
+  const cap = put(new THREE.SphereGeometry(0.248, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.006, -0.03], head);
   cap.rotation.x = -0.8;
-  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.065, 16, 12), hair, [s * 0.206, 0.075, -0.06], head).scale.set(0.33, 0.8, 1.05);
-  // The longer top, parted three-to-seven on his right and blown dry: two shells over the cap,
-  // each pushed outward into a soft mass that rises off the hairline, ridges running the way it
-  // is combed, and sinking back to the scalp at the part, so the part is a crease between them.
-  // A shell is a sphere band whose pole faces forward, so its azimuth runs around the face:
-  // PI is his left, 1.5 PI the crown line, 2 PI his right.
-  const PART = Math.PI * 1.5 + 0.33, GAP = 0.1;
+  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.06, 16, 12), hair, [s * 0.206, 0.07, -0.06], head).scale.set(0.3, 0.75, 1.0);
+  // The top is one sphere band whose pole faces forward, so azimuth runs around the face (PI his
+  // left, 1.5 PI the crown line, 2 PI his right) and the polar angle runs back from the fringe.
+  // Each vertex is placed by hand: the fringe edge is a polar angle per azimuth, low across the
+  // forehead and pointed into LOCKS locks. Spikes stand out of the mass, leaning up and forward.
   const top = new THREE.Group();
-  top.position.set(0, 0, -0.01);
+  top.position.set(0, 0.012, -0.012);
   top.rotation.x = -0.18;
   head.add(top);
-  const SEG_W = 64, SEG_H = 40;
+  const SEG_W = 96, SEG_H = 64, R = 0.256, FROM = Math.PI + 0.05, TO = Math.PI * 2 - 0.05, BACK = 2.4;
+  const LOCKS = 12, THICK = 0.045, CROWN = Math.PI * 1.5;
   const ramp = (x, a, b) => THREE.MathUtils.smoothstep(x, a, b);
+  const hash = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
   const along = (r, phi, theta) => new THREE.Vector3(-r * Math.cos(phi) * Math.sin(theta), -r * Math.sin(phi) * Math.sin(theta), r * Math.cos(theta));
-  // `rise0`/`rise1` are how far in from each side edge the mass builds; a short one at the part
-  // lifts the hair at its roots. `tufts` points the front edge into that many locks.
-  function topHair(r, y, from, to, hairline, height, rise0, rise1, tufts) {
-    const g = new THREE.SphereGeometry(r, SEG_W, SEG_H, from, to - from, hairline, Math.PI - hairline);
-    const pos = g.attributes.position;
-    for (let iy = 0, i = 0; iy <= SEG_H; iy++) {
-      const th = hairline + (iy / SEG_H) * (Math.PI - hairline);
-      const front = ramp(th, hairline, hairline + 0.22) * (1 - ramp(th, 1.5, 2.5)) * (1 + 0.5 * (1 - ramp(th, hairline, hairline + 0.7)));
-      const ridges = 1 + 0.35 * Math.sin((th - hairline) * 11);
-      const fringe = 1 - ramp(th, hairline, hairline + 0.45);
-      for (let ix = 0; ix <= SEG_W; ix++, i++) {
-        const u = ix / SEG_W;
-        const across = ramp(u, 0, rise0) * ramp(1 - u, 0, rise1) * (0.8 + 0.2 * Math.sin(u * Math.PI * 7));
-        const lock = 0.16 * Math.max(0, Math.sin(u * Math.PI * tufts)) ** 2 * across;
-        const p = along(r + height * front * ridges * across, from + u * (to - from), th - lock * fringe);
-        pos.setXYZ(i, p.x, p.y, p.z);
-      }
+  const fringeEdge = (phi, u) => 0.38 + 0.38 * ramp(Math.abs(phi - CROWN), 0.35, 1.25) - 0.17 * Math.max(0, Math.sin(u * Math.PI * LOCKS)) ** 3;
+  const body = (phi, th, u, edge) => THICK * ramp(th, edge, edge + 0.08) * (1 - ramp(th, 1.9, BACK)) * ramp(u, 0, 0.05) * ramp(1 - u, 0, 0.05);
+  const crop = new THREE.SphereGeometry(R, SEG_W, SEG_H);
+  const pos = crop.attributes.position;
+  for (let iy = 0, i = 0; iy <= SEG_H; iy++) {
+    for (let ix = 0; ix <= SEG_W; ix++, i++) {
+      const u = ix / SEG_W, phi = FROM + u * (TO - FROM), edge = fringeEdge(phi, u);
+      const th = edge + (iy / SEG_H) * (BACK - edge);
+      const p = along(R + body(phi, th, u, edge), phi, th);
+      pos.setXYZ(i, p.x, p.y, p.z);
     }
-    g.computeVertexNormals();
-    return put(g, hair, [0, y, 0], top);
   }
-  topHair(0.266, 0.015, Math.PI + 0.45, PART - GAP / 2, 0.6, 0.065, 0.35, 0.12, 5);
-  topHair(0.26, 0.008, PART + GAP / 2, Math.PI * 2 - 0.7, 0.66, 0.035, 0.15, 0.45, 2);
-  const partLine = new THREE.CatmullRomCurve3([0.66, 0.85, 1.05, 1.25].map((th) => along(0.262, PART, th)));
-  put(new THREE.TubeGeometry(partLine, 24, 0.007, 6), clay("#dcae92"), [0, 0.016, 0], top, { cast: false });
+  crop.computeVertexNormals();
+  put(crop, hair, [0, 0, 0], top);
+  const lean = new THREE.Vector3(0, 0.3, 0.35), yAxis = new THREE.Vector3(0, 1, 0);
+  for (const [j, th, count, spread] of [[0, 0.82, 5, 0.95], [1, 1.1, 6, 1.15], [2, 1.42, 6, 1.2], [3, 1.75, 5, 1.05]]) {
+    for (let k = 0; k < count; k++) {
+      const phi = CROWN + ((k + 0.5) / count - 0.5) * 2 * spread + (hash(j, k) - 0.5) * 0.18;
+      const t = th + (hash(k, j) - 0.5) * 0.12, u = (phi - FROM) / (TO - FROM);
+      const base = along(R + body(phi, t, u, fringeEdge(phi, u)) - 0.012, phi, t);
+      const dir = base.clone().normalize().add(lean).normalize();
+      const len = 0.07 + 0.045 * hash(k + 5, j + 9);
+      const spike = put(new THREE.ConeGeometry(0.046, len, 10), hair, [0, 0, 0], top, { cast: false });
+      spike.quaternion.setFromUnitVectors(yAxis, dir);
+      spike.position.copy(base).addScaledVector(dir, len * 0.4);
+    }
+  }
   // Dark oval eyes with a pinpoint of light, straight brows, a small nose and a short mouth line.
   const iris = toonMat({ color: "#1f1917" });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
