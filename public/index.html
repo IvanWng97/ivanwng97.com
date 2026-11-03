@@ -52,7 +52,7 @@
 
   .hero {
     position: relative;
-    min-height: min(92vh, 860px);
+    min-height: min(80vh, 760px);
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
     align-items: center;
@@ -107,8 +107,6 @@
     border-radius: 14px;
     margin-top: 20%;
   }
-  /* Decoding stays on for the scene's texture, which a display:none video can stop. */
-  .feed { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   .no-webgl #scene { display: none; }
   .no-webgl .fallback { display: block; }
 
@@ -120,7 +118,20 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
     gap: 2rem;
   }
-  section { grid-column: 2; margin-top: 3rem; }
+  .projects { grid-column: 1 / -1; margin-top: 2rem; }
+  .cards {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  }
+  .card {
+    padding: 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--sky-low) 70%, transparent);
+  }
+  .card p { margin: 0 0 .75rem; color: var(--muted); }
+  .card .more { margin: 0; font-size: 1rem; }
   h2 {
     font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
@@ -140,7 +151,6 @@
     line-height: 1.1;
     margin: 0 0 .5rem;
   }
-  .work p { margin: 0 0 .75rem; color: var(--muted); max-width: 46ch; }
   .links { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
 
   a {
@@ -154,13 +164,11 @@
   a:hover { color: var(--accent); text-decoration-thickness: 3px; }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
   h3 a { text-decoration: none; }
-  .handle { color: var(--muted); margin-left: .5rem; }
 
   @media (max-width: 760px) {
     .hero { grid-template-columns: 1fr; padding-top: 2.5rem; min-height: 0; gap: 0; }
     .stage { order: -1; max-width: 30rem; justify-self: center; }
     main { grid-template-columns: 1fr; }
-    section { grid-column: 1; }
     .bio { max-width: none; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -174,40 +182,30 @@
   <div class="intro">
     <h1>Ivan</h1>
     <p class="bio">Mobile dev. Building small things in my spare time.</p>
-    <ul class="links">
+    <ul class="links social" aria-label="Find me">
       <li><a href="https://github.com/IvanWng97">GitHub</a></li>
-      <li><a href="https://pixtuoid.dev">pixtuoid</a></li>
     </ul>
   </div>
   <div class="stage">
     <canvas id="scene" aria-hidden="true"></canvas>
-    <img class="fallback" src="/room.jpg" width="1200" height="1200" alt="A cartoon of Ivan on a sofa with his laptop at night: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, and pixtuoid's office on the wall.">
+    <img class="fallback" src="/room.jpg" width="1200" height="1200" alt="A cartoon of Ivan on a sofa with his laptop: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, and a sunset print on the wall.">
     <noscript><style>#scene { display: none; } .fallback { display: block; }</style></noscript>
   </div>
 </header>
 
 <main>
-  <section aria-labelledby="made">
-    <h2 id="made">Things I've made</h2>
-    <article class="work">
-      <h3><a href="https://pixtuoid.dev">pixtuoid</a></h3>
-      <p>Your AI coding agents, visualized as pixel-art coworkers in a terminal office. It's the one playing on the wall up there.</p>
-      <ul class="links">
-        <li><a href="https://pixtuoid.dev">Website</a></li>
-        <li><a href="https://github.com/pixtuoid/pixtuoid">Source on GitHub</a></li>
-      </ul>
-    </article>
-  </section>
-
-  <section aria-labelledby="elsewhere">
-    <h2 id="elsewhere">Elsewhere</h2>
-    <ul class="links">
-      <li><a href="https://github.com/IvanWng97">GitHub</a><span class="handle">@IvanWng97</span></li>
+  <section class="projects" aria-labelledby="projects">
+    <h2 id="projects">Projects</h2>
+    <ul class="cards">
+      <li class="card">
+        <h3><a href="https://pixtuoid.dev">pixtuoid</a></h3>
+        <p>Your AI coding agents, visualized as pixel-art coworkers in a terminal office.</p>
+        <p class="more"><a href="https://github.com/pixtuoid/pixtuoid">Source on GitHub</a></p>
+      </li>
     </ul>
   </section>
 </main>
 
-<video id="feed" class="feed" src="/pixtuoid-demo.mp4" poster="/pixtuoid-demo.jpg" muted loop playsinline preload="auto" aria-hidden="true"></video>
 
 <script type="importmap">
 { "imports": {

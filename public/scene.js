@@ -1,11 +1,11 @@
-// Ivan's corner at dusk, built from primitives and drawn like the avatar: flat
-// toon light under ink outlines. Sofa and laptop, pixtuoid's office playing in
-// a frame on the wall, a turntable, a bookshelf with a camera, the balcony door.
+// Ivan's room in golden hour, a soft-clay diorama built from primitives: sun
+// through the balcony door, a turntable going, a bookshelf with a camera, a
+// print above the sofa. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const canvas = document.getElementById("scene");
-const video = document.getElementById("feed");
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 const dark = matchMedia("(prefers-color-scheme: dark)");
 
@@ -20,349 +20,400 @@ if (renderer) build(renderer);
 function build(renderer) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.AgXToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-  camera.position.set(10.6, 8.2, 12.3);
-  camera.lookAt(-0.3, 0.8, -0.3);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-  // Three bands of light, like a cel painting.
-  const bands = new THREE.DataTexture(new Uint8Array([96, 170, 255]), 3, 1, THREE.RedFormat);
-  bands.minFilter = bands.magFilter = THREE.NearestFilter;
-  bands.needsUpdate = true;
-
-  const ink = new THREE.ShaderMaterial({
-    uniforms: { width: { value: 0.016 }, color: { value: new THREE.Color("#1c1830") } },
-    vertexShader: `uniform float width;
-      void main() {
-        vec3 p = position + normal * width;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-      }`,
-    fragmentShader: `uniform vec3 color; void main() { gl_FragColor = vec4(color, 1.0); }`,
-    side: THREE.BackSide,
-  });
+  // An isometric view: orthographic, so the room reads like a model on a desk.
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  camera.position.set(10, 8.6, 10);
+  camera.lookAt(-0.05, 0.85, -0.15);
+  const VIEW = 6.25;
 
   const room = new THREE.Group();
   scene.add(room);
 
-  const toon = (color) => new THREE.MeshToonMaterial({ color, gradientMap: bands });
-
-  function part(geometry, material, at, parent = room, { outline = true, shadow = true } = {}) {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(...at);
-    mesh.castShadow = shadow;
-    mesh.receiveShadow = true;
-    if (outline) mesh.add(new THREE.Mesh(geometry, ink));
-    parent.add(mesh);
-    return mesh;
+  const clay = (color, roughness = 0.82) => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 });
+  const box = (w, h, d, r = 0.05) => new RoundedBoxGeometry(w, h, d, 4, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
+  const cyl = (rt, rb, h, s = 40) => new THREE.CylinderGeometry(rt, rb, h, s);
+  function put(geometry, material, at, parent = room, { cast = true, receive = true } = {}) {
+    const m = new THREE.Mesh(geometry, material);
+    m.position.set(...at);
+    m.castShadow = cast;
+    m.receiveShadow = receive;
+    parent.add(m);
+    return m;
   }
-  const box = (w, h, d, r = 0.04) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2, h / 2, d / 2));
-  const cyl = (r, h, s = 32) => new THREE.CylinderGeometry(r, r, h, s);
 
-  // Palette: the room by night and by day share every hue but the walls.
   const C = {
-    floor: "#b9875b", rug: "#e2b04a", wallNight: "#3b3566", wallDay: "#efe5d6",
-    sofa: "#2f6f73", cushion: "#3d8a8e", skin: "#f1c6a4", hair: "#1f1a22",
-    tee: "#2b2a33", pants: "#4a5068", wood: "#8a5a3b", dark: "#25222f",
-    metal: "#c9c6d6", record: "#17151d", label: "#e85d5d", leaf: "#5f9e6e", pot: "#d9a07a",
-    books: ["#e07a5f", "#3d405b", "#81b29a", "#f2cc8f", "#6d597a", "#e8e1d1", "#4d7ea8"],
+    wall: "#f1e6d6", wallNight: "#5a5277", floor: "#d9a978", rug: "#f4ead8", rugLine: "#e2a35a",
+    sofa: "#7f9cc0", cushion: "#8eaacc", mustard: "#e8b65a", coral: "#ee8a72", sage: "#7fa889",
+    leaf: "#5f9a6c", pot: "#e9cdb2", wood: "#b9805a", woodDark: "#8a5a3e", ink: "#2b2a35",
+    metal: "#d7d8de", record: "#1d1b22", skin: "#f6d3b8", hair: "#1c181e", tee: "#2f2e37",
+    denim: "#4f6f9b", shoe: "#f5f4f1", books: ["#ee8a72", "#7f9cc0", "#7fa889", "#e8b65a", "#a68bc4", "#f3e4cc", "#5f7f9a"],
   };
 
-  // Floor, walls, rug.
-  part(box(6.2, 0.24, 5.2, 0.06), toon(C.floor), [0, -0.12, 0]);
-  const wallMat = toon(C.wallNight);
-  part(box(6.2, 3.3, 0.22, 0.05), wallMat, [0, 1.53, -2.6]);
-  part(box(0.22, 3.3, 5.2, 0.05), wallMat, [-3.1, 1.53, 0]);
-  part(new THREE.CylinderGeometry(1.45, 1.45, 0.03, 48), toon(C.rug), [-0.3, 0.015, -0.35], room, { shadow: false });
+  // A floor of planks, painted once on a canvas.
+  const planks = (() => {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 512;
+    const g = c.getContext("2d");
+    g.fillStyle = C.floor;
+    g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 8; i++) {
+      g.fillStyle = `rgba(120, 70, 30, ${0.04 + (i % 3) * 0.025})`;
+      g.fillRect(0, i * 64, 512, 64);
+      g.fillStyle = "rgba(90, 50, 20, .22)";
+      g.fillRect(0, i * 64, 512, 2);
+      g.fillRect(((i * 197) % 512), i * 64, 2, 64);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1.4, 1.4);
+    return t;
+  })();
 
-  // The balcony door: a glass that shows the sky and the city past the railing.
-  const glass = new THREE.ShaderMaterial({
-    uniforms: { night: { value: 1 }, time: { value: 0 } },
+  // Room: floor slab, side wall, and a back wall framed round the balcony door.
+  const W = 4.8, D = 4.2, H = 2.8, T = 0.2;
+  const floorMat = new THREE.MeshStandardMaterial({ map: planks, roughness: 0.7 });
+  put(box(W, 0.28, D, 0.08), floorMat, [0, -0.14, 0]);
+  const wallMat = clay(C.wall, 0.95);
+  const backZ = -D / 2 + T / 2, sideX = -W / 2 + T / 2;
+  const door = { left: 0.45, right: 1.75, top: 2.2 };
+  put(box(door.left + W / 2, H, T, 0.04), wallMat, [(-W / 2 + door.left) / 2, H / 2, backZ]);
+  put(box(W / 2 - door.right, H, T, 0.04), wallMat, [(door.right + W / 2) / 2, H / 2, backZ]);
+  put(box(door.right - door.left, H - door.top, T, 0.04), wallMat, [(door.left + door.right) / 2, (H + door.top) / 2, backZ]);
+  put(box(T, H, D, 0.04), wallMat, [sideX, H / 2, 0]);
+  const trim = clay("#fbf6ee", 0.6);
+  put(box(W - T, 0.1, 0.04, 0.015), trim, [T / 2, 0.05, backZ + T / 2 + 0.02]);
+  put(box(0.04, 0.1, D - T, 0.015), trim, [sideX + T / 2 + 0.02, 0.05, T / 2]);
+  // The door's frame and its mullion.
+  const doorFrame = clay("#f8f4ec", 0.5);
+  for (const [w, h, x, y] of [
+    [0.07, door.top, door.left, door.top / 2], [0.07, door.top, door.right, door.top / 2],
+    [door.right - door.left + 0.07, 0.07, (door.left + door.right) / 2, door.top], [0.04, door.top, (door.left + door.right) / 2, door.top / 2],
+  ]) put(box(w, h, 0.09, 0.02), doorFrame, [x, y, backZ]);
+
+  // The view through the door, painted on one plane just behind it: sky,
+  // the city, the balcony rail and its plants. Nothing outside the room is built.
+  let seed = 11;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const viewMat = new THREE.ShaderMaterial({
+    uniforms: { night: { value: 0 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      varying vec2 vUv; uniform float night; uniform float time;
+    fragmentShader: `varying vec2 vUv; uniform float night;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
       void main() {
-        vec3 dayTop = vec3(0.62, 0.78, 0.95), dayLow = vec3(1.0, 0.86, 0.68);
-        vec3 nightTop = vec3(0.06, 0.06, 0.20), nightLow = vec3(0.55, 0.30, 0.45);
-        vec3 sky = mix(mix(dayLow, dayTop, vUv.y), mix(nightLow, nightTop, vUv.y), night);
-        float col = floor(vUv.x * 14.0);
-        float h = 0.28 + 0.22 * hash(vec2(col, 1.0));
-        float town = step(vUv.y, h);
-        vec3 bldg = mix(vec3(0.55, 0.58, 0.70), vec3(0.10, 0.10, 0.22), night);
-        vec2 win = vec2(floor(vUv.x * 70.0), floor(vUv.y * 60.0));
-        float lit = step(0.72, hash(win)) * night * town * step(vUv.y, h - 0.02);
-        vec3 c = mix(sky, bldg, town) + lit * vec3(1.0, 0.8, 0.45);
-        float star = step(0.997, hash(floor(vUv * 220.0))) * night * (1.0 - town);
-        c += star;
-        float rail = step(abs(vUv.y - 0.2), 0.008) + step(0.97, fract(vUv.x * 9.0)) * step(vUv.y, 0.2);
-        c = mix(c, vec3(0.11, 0.09, 0.18), clamp(rail, 0.0, 1.0));
+        vec2 u = vUv;
+        vec3 day = mix(vec3(1.0, 0.82, 0.62), vec3(0.64, 0.78, 0.96), smoothstep(0.25, 1.0, u.y));
+        vec3 eve = mix(vec3(0.52, 0.30, 0.46), vec3(0.07, 0.07, 0.20), smoothstep(0.25, 1.0, u.y));
+        vec3 c = mix(day, eve, night);
+        c += step(0.995, hash(floor(u * 180.0))) * night * step(0.6, u.y);
+        float col = floor(u.x * 9.0);
+        float top = 0.42 + 0.2 * hash(vec2(col, 3.0));
+        float town = step(u.y, top) * step(0.3, u.y);
+        vec3 bldg = mix(vec3(0.72, 0.74, 0.84), vec3(0.16, 0.17, 0.32), night);
+        vec2 w = vec2(floor(u.x * 54.0), floor(u.y * 70.0));
+        float lit = step(0.7, hash(w)) * night * step(u.y, top - 0.02) * step(fract(u.x * 54.0), 0.6) * step(fract(u.y * 70.0), 0.55);
+        c = mix(c, bldg, town) + town * lit * vec3(1.0, 0.78, 0.45);
+        float floorLine = step(u.y, 0.3);
+        c = mix(c, mix(vec3(0.82, 0.76, 0.68), vec3(0.20, 0.18, 0.26), night), floorLine);
+        float rail = step(abs(u.y - 0.47), 0.006) + step(0.93, fract(u.x * 11.0)) * step(u.y, 0.47) * step(0.3, u.y);
+        c = mix(c, mix(vec3(0.24, 0.22, 0.28), vec3(0.06, 0.05, 0.1), night), clamp(rail, 0.0, 1.0));
+        float leaf = smoothstep(0.16, 0.14, length((u - vec2(0.83, 0.42)) * vec2(1.0, 0.8)));
+        leaf = max(leaf, smoothstep(0.11, 0.09, length((u - vec2(0.73, 0.38)) * vec2(1.0, 0.8))));
+        c = mix(c, mix(vec3(0.35, 0.58, 0.40), vec3(0.08, 0.14, 0.12), night), leaf);
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
-  part(new THREE.PlaneGeometry(1.5, 2.25), glass, [1.25, 1.2, -2.48], room, { outline: false, shadow: false });
-  const frameMat = toon(C.dark);
-  for (const [w, h, x, y] of [[1.7, 0.1, 1.25, 2.36], [1.7, 0.1, 1.25, 0.06], [0.1, 2.35, 0.43, 1.2], [0.1, 2.35, 2.07, 1.2], [0.06, 2.25, 1.25, 1.2]]) {
-    part(box(w, h, 0.08, 0.02), frameMat, [x, y, -2.45]);
-  }
-  // A plant by the door.
-  part(cyl(0.18, 0.32), toon(C.pot), [2.45, 0.16, -2.05]);
-  for (const [x, y, z, s] of [[2.45, 0.55, -2.05, 0.22], [2.32, 0.72, -2.0, 0.16], [2.58, 0.68, -2.12, 0.17]]) {
-    part(new THREE.IcosahedronGeometry(s, 1), toon(C.leaf), [x, y, z]);
-  }
+  put(new THREE.PlaneGeometry(door.right - door.left, door.top), viewMat, [(door.left + door.right) / 2, door.top / 2, backZ - T / 2 + 0.01], room, { cast: false, receive: false });
 
-  // The sofa.
-  const sofa = toon(C.sofa), cushion = toon(C.cushion);
-  part(box(2.5, 0.42, 1.0, 0.1), sofa, [-0.55, 0.3, -1.45]);
-  part(box(2.5, 0.75, 0.28, 0.12), sofa, [-0.55, 0.85, -1.85]);
-  part(box(0.28, 0.62, 1.0, 0.12), sofa, [-1.82, 0.52, -1.45]);
-  part(box(0.28, 0.62, 1.0, 0.12), sofa, [0.72, 0.52, -1.45]);
-  part(box(1.12, 0.18, 0.82, 0.08), cushion, [-1.12, 0.6, -1.38]);
-  part(box(1.12, 0.18, 0.82, 0.08), cushion, [0.02, 0.6, -1.38]);
-  part(box(0.5, 0.42, 0.18, 0.09), toon(C.rug), [-1.35, 0.92, -1.66]).rotation.z = 0.25;
+  // The rug, the sofa and its cushions.
+  const rugTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.fillStyle = C.rug;
+    g.beginPath(); g.arc(128, 128, 128, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = C.rugLine; g.lineWidth = 7;
+    for (const r of [104, 84]) { g.beginPath(); g.arc(128, 128, r, 0, Math.PI * 2); g.stroke(); }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  put(cyl(1.25, 1.25, 0.025, 64), new THREE.MeshStandardMaterial({ map: rugTex, roughness: 1 }), [-0.15, 0.013, 0.05], room, { cast: false });
+  const sofa = clay(C.sofa), cushion = clay(C.cushion);
+  put(box(2.3, 0.4, 0.95, 0.12), sofa, [-0.6, 0.28, -1.3]);
+  put(box(2.3, 0.62, 0.26, 0.13), sofa, [-0.6, 0.78, -1.68]);
+  for (const x of [-1.78, 0.58]) put(box(0.26, 0.6, 0.95, 0.13), sofa, [x, 0.48, -1.3]);
+  for (const x of [-1.12, -0.07]) {
+    put(box(1.04, 0.16, 0.82, 0.08), cushion, [x, 0.56, -1.24]);
+    put(box(1.0, 0.5, 0.2, 0.1), cushion, [x, 0.88, -1.56]).rotation.x = -0.12;
+  }
+  put(box(0.42, 0.4, 0.14, 0.12), clay(C.mustard), [-1.45, 0.83, -1.38]).rotation.set(-0.15, 0.25, 0.2);
 
-  // Ivan, on the right cushion with the laptop on his lap.
+  // Ivan, Memoji-proportioned, on the right cushion with the laptop on his knees.
   const me = new THREE.Group();
-  me.position.set(0.05, 0.69, -1.42);
+  me.position.set(-0.07, 0.64, -1.27);
   room.add(me);
-  const skin = toon(C.skin), tee = toon(C.tee), pants = toon(C.pants), hair = toon(C.hair);
-  const torso = part(new THREE.CapsuleGeometry(0.23, 0.32, 6, 16), tee, [0, 0.42, -0.06], me);
-  torso.rotation.x = -0.18;
-  // A Memoji's proportions: the head carries the likeness, so it's drawn large.
-  const head = new THREE.Group();
-  head.position.set(0, 1.0, -0.02);
-  head.scale.setScalar(1.25);
-  me.add(head);
-  // A round face with a full jaw, his own shape.
-  part(new THREE.SphereGeometry(0.21, 32, 24), skin, [0, 0.02, 0], head).scale.set(1.0, 1.02, 0.95);
-  part(new THREE.SphereGeometry(0.2, 32, 24), skin, [0, -0.07, 0.01], head).scale.set(1.04, 0.78, 0.94);
-  for (const x of [-0.205, 0.205]) part(new THREE.SphereGeometry(0.045, 12, 10), skin, [x, -0.01, -0.02], head).scale.set(0.6, 1, 1);
-  // Black hair parted three-to-seven: the part on his right, the swept side lifting over his left.
-  // The cap tips back so the hairline sits above the brows and the back covers low.
-  const cap = part(new THREE.SphereGeometry(0.225, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.46), hair, [0, 0.05, -0.03], head);
-  cap.scale.set(1.04, 1.0, 1.06);
-  cap.rotation.x = -0.42;
-  const sweep = part(new THREE.SphereGeometry(0.13, 24, 16), hair, [0.05, 0.215, 0.06], head);
-  sweep.scale.set(1.35, 0.5, 1.0);
-  sweep.rotation.set(0.35, 0, -0.22);
-  part(new THREE.SphereGeometry(0.075, 16, 12), hair, [0.15, 0.17, 0.08], head).scale.set(1.1, 0.65, 1.0);
-  part(new THREE.SphereGeometry(0.06, 16, 12), hair, [-0.12, 0.19, 0.08], head).scale.set(1.0, 0.5, 0.9);
-  for (const x of [-0.205, 0.205]) part(new THREE.SphereGeometry(0.055, 12, 10), hair, [x, 0.07, -0.07], head).scale.set(0.5, 1.1, 1.2);
-  // Pointed bangs falling toward the swept side, as on his Memoji.
-  for (const [x, y, z, tilt] of [[-0.03, 0.15, 0.17, 0.75], [0.05, 0.14, 0.18, 0.6], [0.12, 0.13, 0.16, 0.45]]) {
-    const bang = part(new THREE.ConeGeometry(0.045, 0.13, 12), hair, [x, y, z], head, { outline: false });
-    bang.rotation.set(-0.35, 0, Math.PI - tilt);
-  }
-  // His Memoji's face: big eyes, thick brows, a small smile, a little blush.
-  const inkFlat = new THREE.MeshBasicMaterial({ color: "#1c1830" });
-  const white = new THREE.MeshBasicMaterial({ color: "#fbfaf7" });
-  for (const x of [-0.072, 0.072]) {
-    part(new THREE.SphereGeometry(0.034, 14, 10), white, [x, 0.005, 0.178], head, { outline: false, shadow: false }).scale.set(1, 0.9, 0.6);
-    part(new THREE.SphereGeometry(0.021, 12, 10), inkFlat, [x * 0.96, 0.0, 0.196], head, { outline: false, shadow: false }).scale.set(1, 1, 0.6);
-    part(box(0.075, 0.02, 0.012, 0.006), inkFlat, [x, 0.07, 0.19], head, { outline: false, shadow: false }).rotation.z = x > 0 ? -0.1 : 0.1;
-    part(new THREE.SphereGeometry(0.028, 10, 8), new THREE.MeshBasicMaterial({ color: "#f2a59b", transparent: true, opacity: 0.55 }), [x * 1.45, -0.07, 0.165], head, { outline: false, shadow: false }).scale.set(1.2, 0.7, 0.4);
-  }
-  part(new THREE.SphereGeometry(0.03, 10, 8), skin, [0, -0.045, 0.2], head, { shadow: false });
-  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 16, Math.PI), new THREE.MeshBasicMaterial({ color: "#8c3d3d" }));
-  smile.position.set(0, -0.095, 0.188);
-  smile.rotation.z = Math.PI;
-  head.add(smile);
-  // Thin silver frames, the thing everyone knows him by.
-  const wire = new THREE.MeshBasicMaterial({ color: "#d3d4de" });
-  for (const x of [-0.072, 0.072]) {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.0055, 6, 4), wire);
-    rim.position.set(x, 0.005, 0.205);
-    rim.rotation.z = Math.PI / 4;
-    rim.scale.set(1.25, 0.95, 1);
-    head.add(rim);
-  }
-  const brow = new THREE.MeshBasicMaterial({ color: "#3a3944" });
-  for (const x of [-0.072, 0.072]) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.014, 0.008), brow);
-    bar.position.set(x, 0.042, 0.207);
-    head.add(bar);
-  }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.006, 0.006), wire);
-  bridge.position.set(0, 0.03, 0.208);
-  head.add(bridge);
-  for (const x of [-0.14, 0.14]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.2), wire);
-    arm.position.set(x * 1.02, 0.02, 0.1);
-    head.add(arm);
-  }
-  // A small silver hoop in each ear.
-  for (const x of [-0.212, 0.212]) {
-    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0035, 6, 16), wire);
-    hoop.position.set(x, -0.05, -0.005);
-    hoop.rotation.y = Math.PI / 2;
-    head.add(hoop);
-  }
-  part(new THREE.CapsuleGeometry(0.06, 0.06, 4, 8), skin, [0, 0.72, -0.02], me);
-  // Legs: thighs along the cushion, shins down to the rug.
-  for (const x of [-0.12, 0.12]) {
-    part(new THREE.CapsuleGeometry(0.1, 0.42, 4, 12), pants, [x, 0.08, 0.2], me).rotation.x = Math.PI / 2;
-    part(new THREE.CapsuleGeometry(0.09, 0.4, 4, 12), pants, [x, -0.27, 0.48], me).rotation.x = 0.12;
-    part(box(0.14, 0.1, 0.26, 0.05), toon(C.dark), [x, -0.56, 0.56], me);
-  }
-  // The laptop, its screen turned to him: the room sees its lid and its glow.
-  const laptop = new THREE.Group();
-  laptop.position.set(0, 0.22, 0.33);
-  laptop.rotation.set(0.12, Math.PI, 0);
-  me.add(laptop);
-  const alu = toon(C.metal);
-  part(box(0.62, 0.035, 0.42, 0.015), alu, [0, 0, 0], laptop);
-  const lid = new THREE.Group();
-  lid.position.set(0, 0.02, -0.2);
-  lid.rotation.x = 1.92 - Math.PI / 2;
-  laptop.add(lid);
-  part(box(0.62, 0.42, 0.025, 0.015), alu, [0, 0.21, 0], lid);
-  part(new THREE.PlaneGeometry(0.56, 0.37), new THREE.MeshBasicMaterial({ color: "#a9bcff" }), [0, 0.215, 0.0135], lid, { outline: false, shadow: false });
-  const screenGlow = new THREE.PointLight("#9fb8ff", 0, 2.2, 2);
-  screenGlow.position.set(0, 0.25, 0.25);
-  lid.add(screenGlow);
-
-  // On the wall above the sofa, a frame playing pixtuoid's office.
-  const feed = new THREE.VideoTexture(video);
-  feed.colorSpace = THREE.SRGBColorSpace;
-  const poster = new THREE.TextureLoader().load(video.poster, () => draw());
-  poster.colorSpace = THREE.SRGBColorSpace;
-  const screen = new THREE.MeshBasicMaterial({ map: poster, toneMapped: false });
-  part(box(1.46, 1.0, 0.06, 0.02), toon(C.dark), [-0.62, 2.02, -2.46]);
-  part(new THREE.PlaneGeometry(1.34, 0.893), screen, [-0.62, 2.02, -2.425], room, { outline: false, shadow: false });
-  // Arms as joined segments, shoulder to elbow to the keys; typing turns the forearm at the elbow.
+  const skin = clay(C.skin, 0.7), tee = clay(C.tee, 0.92), denim = clay(C.denim, 0.9), hair = clay(C.hair, 0.55);
   const Y = new THREE.Vector3(0, 1, 0);
-  function limb(a, b, radius, material, parent) {
-    const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b);
-    const span = to.clone().sub(from);
-    const mesh = part(new THREE.CapsuleGeometry(radius, Math.max(span.length() - radius, 0.01), 4, 12), material, [0, 0, 0], parent);
-    mesh.position.copy(from).addScaledVector(span, 0.5);
-    mesh.quaternion.setFromUnitVectors(Y, span.normalize());
-    return mesh;
+  function limb(a, b, r, mat, parent) {
+    const from = new THREE.Vector3(...a), span = new THREE.Vector3(...b).sub(from);
+    const m = put(new THREE.CapsuleGeometry(r, Math.max(span.length() - r, 0.01), 6, 14), mat, [0, 0, 0], parent);
+    m.position.copy(from).addScaledVector(span, 0.5);
+    m.quaternion.setFromUnitVectors(Y, span.normalize());
+    return m;
+  }
+  const torso = put(new THREE.CapsuleGeometry(0.2, 0.22, 8, 20), tee, [0, 0.36, -0.04], me);
+  torso.scale.set(1.08, 1, 0.85);
+  for (const s of [-1, 1]) {
+    limb([s * 0.11, 0.06, -0.02], [s * 0.12, 0.06, 0.36], 0.095, denim, me);
+    limb([s * 0.12, 0.06, 0.36], [s * 0.13, -0.42, 0.42], 0.085, denim, me);
+    put(box(0.15, 0.1, 0.27, 0.05), clay(C.shoe, 0.6), [s * 0.13, -0.5, 0.5], me);
+    put(box(0.155, 0.03, 0.28, 0.012), clay("#d9d6cf", 0.6), [s * 0.13, -0.56, 0.5], me);
   }
   const forearms = [];
   for (const s of [-1, 1]) {
-    const shoulder = [s * 0.21, 0.63, -0.08], elbow = [s * 0.27, 0.36, 0.03];
-    limb(shoulder, [s * 0.235, 0.53, -0.04], 0.085, tee, me);
+    const shoulder = [s * 0.2, 0.52, -0.05], elbow = [s * 0.25, 0.3, 0.08];
+    limb(shoulder, [s * 0.22, 0.44, -0.02], 0.085, tee, me);
     limb(shoulder, elbow, 0.055, skin, me);
     const fore = new THREE.Group();
     fore.position.set(...elbow);
     me.add(fore);
-    const hand = [s * -0.15, -0.085, 0.27];
+    const hand = [s * -0.12, 0.0, 0.25];
     limb([0, 0, 0], hand, 0.05, skin, fore);
-    part(new THREE.SphereGeometry(0.058, 12, 10), skin, hand, fore).scale.set(1, 0.7, 1.2);
+    put(new THREE.SphereGeometry(0.058, 16, 12), skin, hand, fore).scale.set(1, 0.75, 1.15);
     forearms.push(fore);
   }
+  // The laptop on his knees, its screen turned to him.
+  const laptop = new THREE.Group();
+  laptop.position.set(0, 0.28, 0.33);
+  laptop.rotation.set(0.1, Math.PI, 0);
+  me.add(laptop);
+  const alu = new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.35, metalness: 0.6 });
+  put(box(0.56, 0.03, 0.38, 0.015), alu, [0, 0, 0], laptop);
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.015, -0.18);
+  lid.rotation.x = 0.32;
+  laptop.add(lid);
+  put(box(0.56, 0.38, 0.02, 0.015), alu, [0, 0.19, 0], lid);
+  put(new THREE.PlaneGeometry(0.5, 0.32), new THREE.MeshBasicMaterial({ color: "#b9c8ff", toneMapped: false }), [0, 0.195, 0.011], lid, { cast: false });
+  const screenGlow = new THREE.PointLight("#a9bcff", 0, 1.8, 2);
+  screenGlow.position.set(0, 0.2, 0.25);
+  lid.add(screenGlow);
 
-  // The turntable on a low cabinet, a record turning on it.
-  part(box(1.05, 0.62, 0.62, 0.06), toon(C.wood), [1.75, 0.31, -1.7]);
-  part(box(0.66, 0.09, 0.5, 0.03), toon(C.dark), [1.75, 0.67, -1.7]);
-  const platter = new THREE.Group();
-  platter.position.set(1.68, 0.73, -1.7);
-  room.add(platter);
-  part(cyl(0.2, 0.02, 48), toon(C.record), [0, 0, 0], platter);
-  part(cyl(0.065, 0.025, 24), toon(C.label), [0, 0.002, 0], platter, { outline: false });
-  part(box(0.05, 0.01, 0.012, 0.004), toon("#f2efe8"), [0.035, 0.016, 0], platter, { outline: false, shadow: false });
-  part(box(0.02, 0.02, 0.3, 0.008), toon(C.metal), [1.92, 0.76, -1.66]).rotation.y = 0.5;
-  // Records leaning against the cabinet.
-  for (const [i, c] of [[0, "#e07a5f"], [1, "#4d7ea8"], [2, "#f2cc8f"]]) {
-    part(box(0.04, 0.5, 0.5, 0.01), toon(c), [2.33 + i * 0.05, 0.26, -1.25 + i * 0.03]).rotation.z = -0.12;
+  // The head: round, smooth, young.
+  const head = new THREE.Group();
+  head.position.set(0, 0.86, 0.0);
+  me.add(head);
+  put(new THREE.SphereGeometry(0.245, 40, 32), skin, [0, 0, 0], head).scale.set(1.0, 0.98, 0.96);
+  put(new THREE.SphereGeometry(0.2, 32, 24), skin, [0, -0.07, 0.025], head).scale.set(1.08, 0.8, 0.95);
+  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.05, 16, 12), skin, [s * 0.24, -0.01, -0.01], head).scale.set(0.55, 1, 0.9);
+  put(new THREE.CapsuleGeometry(0.07, 0.06, 6, 12), skin, [0, -0.25, -0.01], head);
+  // Hair parted three-to-seven: the part on his right, the long side lifting and sweeping over to his left.
+  const PART = -0.085;
+  put(new THREE.SphereGeometry(0.252, 40, 24, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.02, -0.035], head).rotation.x = -0.5;
+  const shortSide = put(new THREE.SphereGeometry(0.12, 24, 16), hair, [PART - 0.08, 0.17, 0.02], head);
+  shortSide.scale.set(0.95, 0.5, 1.6);
+  shortSide.rotation.z = 0.35;
+  const longSide = put(new THREE.SphereGeometry(0.17, 32, 20), hair, [PART + 0.16, 0.2, 0.025], head);
+  longSide.scale.set(1.1, 0.55, 1.35);
+  longSide.rotation.set(0.1, 0, -0.2);
+  const quiff = put(new THREE.SphereGeometry(0.11, 24, 16), hair, [PART + 0.11, 0.21, 0.15], head);
+  quiff.scale.set(1.25, 0.7, 0.85);
+  quiff.rotation.set(0.5, 0.1, -0.35);
+  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.07, 16, 12), hair, [s * 0.215, 0.08, -0.06], head).scale.set(0.35, 0.85, 1.05);
+  // Eyes with a light in them and thin arched brows; the Memoji's smile reads from the eyes.
+  const white = new THREE.MeshBasicMaterial({ color: "#fdfcf9" });
+  const iris = new THREE.MeshStandardMaterial({ color: "#241c19", roughness: 0.25 });
+  const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+  const browMat = clay("#231d20", 0.6);
+  for (const s of [-1, 1]) {
+    const x = s * 0.085;
+    put(new THREE.SphereGeometry(0.045, 20, 16), white, [x, 0.0, 0.2], head, { cast: false }).scale.set(0.95, 1.05, 0.5);
+    put(new THREE.SphereGeometry(0.03, 20, 16), iris, [x - s * 0.004, -0.004, 0.217], head, { cast: false }).scale.set(1, 1.08, 0.55);
+    put(new THREE.SphereGeometry(0.009, 8, 6), spark, [x + 0.012, 0.012, 0.234], head, { cast: false });
+    const brow = put(new THREE.TorusGeometry(0.05, 0.008, 6, 16, Math.PI * 0.7), browMat, [x, 0.065, 0.215], head, { cast: false });
+    brow.rotation.z = Math.PI * 0.15 + (s > 0 ? 0 : 0.1);
   }
-  // Notes drifting up from the music.
+  put(new THREE.SphereGeometry(0.026, 12, 10), skin, [0, -0.055, 0.235], head, { cast: false });
+  // His glasses: thin rims under a darker top bar.
+  const rimMat = new THREE.MeshStandardMaterial({ color: "#c9ccd6", roughness: 0.3, metalness: 0.7 });
+  const barMat = clay("#3b3a45", 0.5);
+  const ring = (() => {
+    const s = new THREE.Shape(), w = 0.13, h = 0.095, r = 0.03;
+    s.moveTo(-w / 2 + r, -h / 2); s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+    s.lineTo(w / 2, h / 2 - r); s.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2); s.lineTo(-w / 2 + r, h / 2);
+    s.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r); s.lineTo(-w / 2, -h / 2 + r); s.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+    const hole = new THREE.Path(), i = 0.008, wi = w - 2 * i, hi = h - 2 * i, ri = r - i;
+    hole.moveTo(-wi / 2 + ri, -hi / 2); hole.lineTo(wi / 2 - ri, -hi / 2); hole.quadraticCurveTo(wi / 2, -hi / 2, wi / 2, -hi / 2 + ri);
+    hole.lineTo(wi / 2, hi / 2 - ri); hole.quadraticCurveTo(wi / 2, hi / 2, wi / 2 - ri, hi / 2); hole.lineTo(-wi / 2 + ri, hi / 2);
+    hole.quadraticCurveTo(-wi / 2, hi / 2, -wi / 2, hi / 2 - ri); hole.lineTo(-wi / 2, -hi / 2 + ri); hole.quadraticCurveTo(-wi / 2, -hi / 2, -wi / 2 + ri, -hi / 2);
+    s.holes.push(hole);
+    return new THREE.ExtrudeGeometry(s, { depth: 0.006, bevelEnabled: false, curveSegments: 6 });
+  })();
+  for (const s of [-1, 1]) {
+    put(ring, rimMat, [s * 0.085, 0.008, 0.232], head, { cast: false });
+    put(box(0.13, 0.014, 0.012, 0.006), barMat, [s * 0.085, 0.052, 0.238], head, { cast: false });
+    put(box(0.008, 0.008, 0.2, 0.003), rimMat, [s * 0.155, 0.03, 0.13], head, { cast: false });
+    const hoop = put(new THREE.TorusGeometry(0.016, 0.004, 8, 20), rimMat, [s * 0.252, -0.055, -0.01], head, { cast: false });
+    hoop.rotation.y = Math.PI / 2;
+  }
+  put(box(0.045, 0.008, 0.008, 0.003), rimMat, [0, 0.03, 0.238], head, { cast: false });
+
+  // A print above the sofa: hills at sunset, the kind of picture he'd take.
+  const print = (() => {
+    const c = document.createElement("canvas");
+    c.width = 360; c.height = 240;
+    const g = c.getContext("2d");
+    const sky = g.createLinearGradient(0, 0, 0, 240);
+    sky.addColorStop(0, "#f7c9a0"); sky.addColorStop(0.55, "#f19a7e"); sky.addColorStop(1, "#b9779a");
+    g.fillStyle = sky; g.fillRect(0, 0, 360, 240);
+    g.fillStyle = "#fde7c4"; g.beginPath(); g.arc(220, 118, 34, 0, Math.PI * 2); g.fill();
+    for (const [y, col, amp] of [[150, "#8d6a9c", 18], [178, "#5f5a8c", 22], [205, "#3e4572", 14]]) {
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, 240);
+      for (let x = 0; x <= 360; x += 12) g.lineTo(x, y - Math.sin(x / 47 + y) * amp - Math.sin(x / 19) * amp * 0.3);
+      g.lineTo(360, 240); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  })();
+  put(box(1.22, 0.86, 0.05, 0.02), clay("#f8f3ea", 0.6), [-0.65, 1.86, backZ + T / 2 + 0.03]);
+  put(new THREE.PlaneGeometry(1.02, 0.68), new THREE.MeshStandardMaterial({ map: print, roughness: 0.9 }), [-0.65, 1.86, backZ + T / 2 + 0.058], room, { cast: false });
+
+  // The turntable on a low cabinet by the door, records leaning beside it.
+  put(box(0.95, 0.56, 0.55, 0.05), clay(C.wood), [1.45, 0.28, -1.55]);
+  for (const x of [1.22, 1.68]) put(box(0.4, 0.4, 0.02, 0.01), clay(C.woodDark), [x, 0.28, -1.27]);
+  put(box(0.6, 0.08, 0.44, 0.03), clay("#f3efe7", 0.6), [1.45, 0.6, -1.55]);
+  const platter = new THREE.Group();
+  platter.position.set(1.4, 0.655, -1.55);
+  room.add(platter);
+  put(cyl(0.17, 0.17, 0.015, 48), new THREE.MeshStandardMaterial({ color: C.record, roughness: 0.3 }), [0, 0, 0], platter);
+  put(cyl(0.055, 0.055, 0.018, 32), clay(C.coral), [0, 0.001, 0], platter);
+  put(box(0.04, 0.006, 0.01, 0.002), clay("#fff"), [0.03, 0.011, 0], platter, { cast: false });
+  put(box(0.015, 0.015, 0.26, 0.006), rimMat, [1.62, 0.68, -1.52]).rotation.y = 0.45;
+  for (const [i, c] of [[0, C.coral], [1, C.sage], [2, C.mustard]]) put(box(0.035, 0.42, 0.42, 0.01), clay(c), [2.02 + i * 0.045, 0.22, -1.05 + i * 0.02]).rotation.z = -0.1;
+
+  // Notes drifting up from the record.
   const noteTex = (() => {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
     const g = c.getContext("2d");
-    g.fillStyle = "#fff";
-    g.font = "52px serif";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
+    g.fillStyle = "#fff"; g.font = "52px serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText("♪", 32, 34);
     return new THREE.CanvasTexture(c);
   })();
   const notes = [];
   for (let i = 0; i < 4; i++) {
-    const m = new THREE.SpriteMaterial({ map: noteTex, color: "#ffd38a", transparent: true, depthWrite: false });
-    const s = new THREE.Sprite(m);
-    s.scale.setScalar(0.16);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTex, color: "#ffcf86", transparent: true, depthWrite: false, toneMapped: false }));
+    s.scale.setScalar(0.15);
     room.add(s);
-    notes.push({ sprite: s, phase: i / 4 });
+    notes.push({ s, phase: i / 4 });
   }
 
   // The bookshelf on the side wall, a camera on its middle shelf.
-  const shelfMat = toon(C.wood);
   const shelf = new THREE.Group();
-  shelf.position.set(-2.82, 0, 0.55);
+  shelf.position.set(sideX + T / 2 + 0.2, 0, 0.35);
   room.add(shelf);
-  part(box(0.42, 2.3, 0.06, 0.02), shelfMat, [0, 1.15, -0.72], shelf);
-  part(box(0.42, 2.3, 0.06, 0.02), shelfMat, [0, 1.15, 0.72], shelf);
-  for (const y of [0.05, 0.62, 1.2, 1.78, 2.28]) part(box(0.42, 0.05, 1.5, 0.015), shelfMat, [0, y, 0], shelf);
-  let seed = 7;
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (const y of [0.075, 0.645, 1.805]) {
-    let z = -0.66;
-    while (z < 0.62) {
-      const w = 0.06 + rand() * 0.05, h = 0.32 + rand() * 0.18;
-      if (z + w > 0.66) break;
-      const b = part(box(0.3, h, w, 0.012), toon(C.books[Math.floor(rand() * C.books.length)]), [0.02, y + h / 2, z + w / 2], shelf, { outline: rand() > 0.4 });
-      if (rand() > 0.85) b.rotation.x = 0.12;
-      z += w + 0.008;
+  const wood = clay(C.wood, 0.7);
+  for (const z of [-0.7, 0.7]) put(box(0.38, 2.1, 0.05, 0.02), wood, [0, 1.05, z], shelf);
+  for (const y of [0.04, 0.56, 1.08, 1.6, 2.08]) put(box(0.38, 0.045, 1.45, 0.015), wood, [0, y, 0], shelf);
+  for (const y of [0.065, 0.585, 1.625]) {
+    let z = -0.64;
+    while (z < 0.6) {
+      const w = 0.055 + rand() * 0.045, h = 0.28 + rand() * 0.16;
+      if (z + w > 0.64) break;
+      const b = put(box(0.28, h, w, 0.012), clay(C.books[Math.floor(rand() * C.books.length)], 0.75), [0.02, y + h / 2, z + w / 2], shelf);
+      if (rand() > 0.85) b.rotation.x = 0.13;
+      z += w + 0.01;
     }
   }
-  // The camera.
   const cam = new THREE.Group();
-  cam.position.set(0.02, 1.32, -0.2);
-  cam.rotation.y = 0.7;
+  cam.position.set(0.04, 1.2, -0.22);
+  cam.rotation.y = 0.8;
   shelf.add(cam);
-  part(box(0.24, 0.15, 0.12, 0.03), toon(C.dark), [0, 0, 0], cam);
-  part(box(0.07, 0.04, 0.1, 0.01), toon(C.dark), [-0.06, 0.09, 0], cam);
-  const lens = part(cyl(0.05, 0.08), toon(C.metal), [0.0, 0, 0.09], cam);
-  lens.rotation.x = Math.PI / 2;
-  part(cyl(0.035, 0.012), new THREE.MeshBasicMaterial({ color: "#3a4a7a" }), [0, 0, 0.135], cam, { outline: false, shadow: false }).rotation.x = Math.PI / 2;
-  part(new THREE.IcosahedronGeometry(0.13, 1), toon(C.leaf), [0.02, 1.36, 0.4], shelf);
-  part(cyl(0.08, 0.14), toon(C.pot), [0.02, 1.27, 0.4], shelf);
+  put(box(0.24, 0.15, 0.11, 0.03), clay(C.ink, 0.5), [0, 0, 0], cam);
+  put(box(0.22, 0.05, 0.115, 0.02), clay("#cfcbc2", 0.5), [0, 0.03, 0], cam);
+  put(cyl(0.048, 0.05, 0.08), clay(C.ink, 0.4), [0, -0.01, 0.09], cam).rotation.x = Math.PI / 2;
+  put(cyl(0.032, 0.032, 0.012), new THREE.MeshStandardMaterial({ color: "#3d5a9a", roughness: 0.05, metalness: 0.3 }), [0, -0.01, 0.135], cam, { cast: false }).rotation.x = Math.PI / 2;
+  put(new THREE.IcosahedronGeometry(0.12, 2), clay(C.leaf), [0.04, 1.27, 0.38], shelf);
+  put(cyl(0.075, 0.06, 0.13), clay(C.pot), [0.04, 1.17, 0.38], shelf);
 
-  // The floor lamp behind the sofa's arm.
-  part(cyl(0.16, 0.04), toon(C.dark), [-2.35, 0.02, -2.1]);
-  part(cyl(0.02, 1.75), toon(C.dark), [-2.35, 0.9, -2.1]);
-  const shadeMat = new THREE.MeshToonMaterial({ color: "#f6dcae", gradientMap: bands, emissive: new THREE.Color("#ffb860"), emissiveIntensity: 0 });
-  part(new THREE.CylinderGeometry(0.16, 0.3, 0.32, 32, 1, true), shadeMat, [-2.35, 1.86, -2.1]).material.side = THREE.DoubleSide;
-  const lamp = new THREE.PointLight("#ffb46a", 0, 6, 1.6);
-  lamp.position.set(-2.35, 1.7, -2.0);
+  // The floor lamp, warm at night.
+  put(cyl(0.15, 0.17, 0.04), clay(C.ink, 0.5), [-2.0, 0.02, -1.75]);
+  put(cyl(0.018, 0.018, 1.7, 12), clay(C.ink, 0.5), [-2.0, 0.87, -1.75]);
+  const shadeMat = new THREE.MeshStandardMaterial({ color: "#f7e6c6", roughness: 0.9, side: THREE.DoubleSide, emissive: new THREE.Color("#ffb560"), emissiveIntensity: 0 });
+  put(new THREE.CylinderGeometry(0.15, 0.27, 0.3, 40, 1, true), shadeMat, [-2.0, 1.82, -1.75]);
+  const lamp = new THREE.PointLight("#ffb56b", 0, 5.5, 1.5);
+  lamp.position.set(-2.0, 1.65, -1.65);
   lamp.castShadow = true;
   lamp.shadow.mapSize.set(512, 512);
+  lamp.shadow.radius = 6;
   room.add(lamp);
 
-  // Light: the sky through the door, and the sun or the moon.
-  const hemi = new THREE.HemisphereLight("#ffffff", "#5a4a6a", 1);
+  // A plant in the corner by the door, and dust turning in the sunlight.
+  put(cyl(0.2, 0.15, 0.36), clay(C.pot), [-1.9, 0.18, 1.55]);
+  for (const [x, y, z, s] of [[-1.9, 0.62, 1.55, 0.24], [-2.0, 0.84, 1.6, 0.17], [-1.8, 0.8, 1.48, 0.18], [-1.92, 1.0, 1.52, 0.14]]) put(new THREE.IcosahedronGeometry(s, 2), clay(C.sage), [x, y, z]);
+  const motes = new Float32Array(60 * 3);
+  for (let i = 0; i < motes.length; i += 3) {
+    motes[i] = 0.4 + rand() * 1.6;
+    motes[i + 1] = 0.2 + rand() * 1.8;
+    motes[i + 2] = -1.9 + rand() * 1.9;
+  }
+  const dust = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(motes, 3)),
+    new THREE.PointsMaterial({ color: "#fff2d0", size: 0.025, transparent: true, opacity: 0.6, depthWrite: false })
+  );
+  room.add(dust);
+
+  // Light.
+  const hemi = new THREE.HemisphereLight("#fff3e3", "#d2aa82", 0.9);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight("#fff3df", 1);
-  sun.position.set(4, 7, 3);
+  const sun = new THREE.DirectionalLight("#ffd9a6", 3);
+  sun.position.set(2.6, 4.2, -6.5);
+  sun.target.position.set(0.2, 0, 0.3);
+  scene.add(sun.target);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 });
-  sun.shadow.bias = -0.0008;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.5, far: 20 });
+  sun.shadow.radius = 4;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun);
+  const fill = new THREE.DirectionalLight("#cfd9ff", 0.5);
+  fill.position.set(6, 5, 6);
+  scene.add(fill);
 
   function applyTheme() {
     const night = dark.matches;
-    wallMat.color.set(night ? C.wallNight : C.wallDay);
-    glass.uniforms.night.value = night ? 1 : 0;
-    hemi.intensity = night ? 0.55 : 1.15;
-    hemi.groundColor.set(night ? "#2a2240" : "#b9a48f");
-    sun.intensity = night ? 0.35 : 1.6;
-    sun.color.set(night ? "#8f9bff" : "#fff1dc");
-    lamp.intensity = night ? 3.2 : 0;
-    shadeMat.emissiveIntensity = night ? 0.9 : 0;
-    screenGlow.intensity = night ? 0.9 : 0.25;
-    ink.uniforms.color.value.set(night ? "#120f22" : "#2a2440");
+    wallMat.color.set(night ? C.wallNight : C.wall);
+    viewMat.uniforms.night.value = night ? 1 : 0;
+    hemi.intensity = night ? 0.22 : 0.9;
+    hemi.color.set(night ? "#8e8cff" : "#fff3e3");
+    hemi.groundColor.set(night ? "#3a2f48" : "#d2aa82");
+    sun.intensity = night ? 0.5 : 3.2;
+    sun.color.set(night ? "#8fa2ff" : "#ffd6a0");
+    fill.intensity = night ? 0.12 : 0.5;
+    lamp.intensity = night ? 4.5 : 0;
+    shadeMat.emissiveIntensity = night ? 1.4 : 0;
+    screenGlow.intensity = night ? 1.2 : 0.2;
+    scene.environmentIntensity = night ? 0.15 : 0.45;
+    dust.visible = !night;
+    renderer.toneMappingExposure = night ? 1.15 : 1.12;
   }
   applyTheme();
 
-  // Motion: one slow life, paused when nobody can see it.
+  // Motion.
   let aim = 0, look = 0, aimY = 0, lookY = 0, frame = 0, visible = true, shown = false;
   const t0 = performance.now();
+  const dustBase = dust.geometry.attributes.position.array.slice();
   addEventListener("pointermove", (e) => {
     aim = (e.clientX / innerWidth - 0.5) * 2;
     aimY = (e.clientY / innerHeight - 0.5) * 2;
@@ -371,9 +422,11 @@ function build(renderer) {
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
-    if (canvas.width !== Math.round(w * renderer.getPixelRatio()) || canvas.height !== Math.round(h * renderer.getPixelRatio())) {
+    const pr = renderer.getPixelRatio();
+    if (canvas.width !== Math.round(w * pr) || canvas.height !== Math.round(h * pr)) {
       renderer.setSize(w, h, false);
-      camera.aspect = w / h;
+      const a = w / h, half = VIEW / 2;
+      Object.assign(camera, a >= 1 ? { left: -half * a, right: half * a, top: half, bottom: -half } : { left: -half, right: half, top: half / a, bottom: -half / a });
       camera.updateProjectionMatrix();
     }
   }
@@ -385,51 +438,45 @@ function build(renderer) {
     if (!calm) {
       look += (aim - look) * 0.04;
       lookY += (aimY - lookY) * 0.04;
-      room.rotation.y = -0.05 + look * 0.12;
-      room.rotation.x = lookY * 0.04;
-      torso.scale.y = 1 + Math.sin(t * 1.6) * 0.012;
-      head.rotation.set(0.12 + Math.sin(t * 0.7) * 0.03, 0.28 + Math.sin(t * 0.33) * 0.14, Math.sin(t * 0.5) * 0.03);
+      room.rotation.y = look * 0.1;
+      room.rotation.x = lookY * 0.03;
+      torso.scale.y = 1 + Math.sin(t * 1.6) * 0.015;
+      head.rotation.set(0.14 + Math.sin(t * 0.7) * 0.025, 0.3 + Math.sin(t * 0.31) * 0.14, Math.sin(t * 0.5) * 0.03);
       forearms.forEach((f, i) => { f.rotation.x = Math.sin(t * 11 + i * 1.7) * 0.05 * (0.5 + 0.5 * Math.sin(t * 0.8)); });
       platter.rotation.y = -t * 3.49;
       for (const n of notes) {
         const k = (t * 0.22 + n.phase) % 1;
-        n.sprite.position.set(1.62 + Math.sin(k * 6 + n.phase * 9) * 0.18, 0.85 + k * 1.3, -1.68);
-        n.sprite.material.opacity = Math.sin(k * Math.PI) * 0.9;
+        n.s.position.set(1.36 + Math.sin(k * 6 + n.phase * 9) * 0.16, 0.8 + k * 1.2, -1.52);
+        n.s.material.opacity = Math.sin(k * Math.PI) * 0.9;
       }
-      glass.uniforms.time.value = t;
+      const p = dust.geometry.attributes.position.array;
+      for (let i = 0; i < p.length; i += 3) {
+        p[i] = dustBase[i] + Math.sin(t * 0.3 + i) * 0.05;
+        p[i + 1] = dustBase[i + 1] + Math.sin(t * 0.2 + i * 0.7) * 0.08;
+      }
+      dust.geometry.attributes.position.needsUpdate = true;
     } else {
-      room.rotation.set(0, -0.05, 0);
-      head.rotation.set(0.12, 0.28, 0);
-      for (const n of notes) n.sprite.material.opacity = 0;
-    }
-    if (!calm && video.readyState >= 2) {
-      if (screen.map !== feed) { screen.map = feed; screen.needsUpdate = true; }
-    } else if (screen.map !== poster) {
-      screen.map = poster;
-      screen.needsUpdate = true;
+      room.rotation.set(0, 0, 0);
+      head.rotation.set(0.14, 0.3, 0);
+      for (const n of notes) n.s.material.opacity = 0;
     }
     renderer.render(scene, camera);
     if (!shown) { shown = true; canvas.classList.add("ready"); }
   }
 
+  const running = () => visible && !document.hidden && !still.matches;
   function loop(now) {
     draw(now);
     frame = running() ? requestAnimationFrame(loop) : 0;
   }
-  const running = () => visible && !document.hidden && !still.matches;
-
   function wake() {
     if (running()) {
-      video.muted = true;
-      video.play().catch(() => {});
       if (!frame) frame = requestAnimationFrame(loop);
     } else {
-      video.pause();
       if (frame) { cancelAnimationFrame(frame); frame = 0; }
       draw();
     }
   }
-
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
   document.addEventListener("visibilitychange", wake);
   still.addEventListener("change", wake);
