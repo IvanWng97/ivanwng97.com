@@ -1,6 +1,6 @@
 // Ivan's room in golden hour, a cel-shaded diorama built from primitives: sun
-// through the balcony door, a turntable going, headphones, a bookshelf with a
-// camera, a print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
+// through the balcony door, a turntable going, headphones, a game controller
+// and a handheld, a bookshelf with a camera, a print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
@@ -328,6 +328,12 @@ function build(renderer) {
   })();
   put(box(1.22, 0.86, 0.05, 0.02), clay("#f8f3ea", 0.6), [-0.65, 1.86, backZ + T / 2 + 0.03]);
   put(new THREE.PlaneGeometry(1.02, 0.68), toonMat({ map: print, roughness: 0.9 }), [-0.65, 1.86, backZ + T / 2 + 0.058], room, { cast: false });
+  // The same frame showing a pixtuoid office, faded in while the page points at pixtuoid.
+  const officeTex = new THREE.TextureLoader().load("/pixtuoid.png");
+  officeTex.colorSpace = THREE.SRGBColorSpace;
+  officeTex.magFilter = THREE.NearestFilter;
+  const officeMat = toonMat({ map: officeTex, transparent: true, opacity: 0 });
+  const office = put(new THREE.PlaneGeometry(1.02, 0.68), officeMat, [-0.65, 1.86, backZ + T / 2 + 0.06], room, { cast: false });
 
   // The turntable on a low cabinet by the door, records leaning beside it.
   put(box(0.95, 0.56, 0.55, 0.05), clay(C.wood), [1.45, 0.28, -1.55]);
@@ -352,6 +358,26 @@ function build(renderer) {
     put(cyl(0.042, 0.042, 0.022, 24), pad, [0, 0, s * 0.075], cans).rotation.x = Math.PI / 2;
   }
   put(new THREE.TorusGeometry(0.11, 0.013, 8, 32, Math.PI), shell, [0, 0.01, 0], cans).rotation.y = Math.PI / 2;
+  // A game controller on the seat beside him, white grips round a black middle.
+  const pad1 = new THREE.Group();
+  pad1.position.set(-0.82, 0.668, -1.0);
+  pad1.rotation.set(0, 0.5, 0);
+  room.add(pad1);
+  const padWhite = clay("#f4f2ee");
+  put(box(0.11, 0.038, 0.075, 0.018), pad, [0, 0.005, 0], pad1);
+  for (const s of [-1, 1]) {
+    const grip = put(new THREE.CapsuleGeometry(0.024, 0.06, 6, 12), padWhite, [s * 0.068, 0, 0.022], pad1);
+    grip.rotation.set(Math.PI / 2 - 0.25, 0, s * 0.45);
+    put(cyl(0.011, 0.011, 0.014, 12), pad, [s * 0.03, 0.028, 0.018], pad1, { cast: false });
+  }
+  // A handheld console on the far arm of the sofa, its two controllers in red and blue.
+  const handheld = new THREE.Group();
+  handheld.position.set(-1.78, 0.79, -1.08);
+  handheld.rotation.set(0, Math.PI / 2 - 0.2, 0);
+  room.add(handheld);
+  put(box(0.17, 0.014, 0.1, 0.006), pad, [0, 0, 0], handheld);
+  put(new THREE.PlaneGeometry(0.14, 0.08), new THREE.MeshBasicMaterial({ color: "#3a4157" }), [0, 0.0075, 0], handheld, { cast: false }).rotation.x = -Math.PI / 2;
+  for (const [s, color] of [[-1, "#20b8e6"], [1, "#ff4b3a"]]) put(box(0.04, 0.016, 0.1, 0.012), clay(color), [s * 0.105, 0, 0], handheld);
 
   // Notes drifting up from the record.
   const noteTex = (() => {
@@ -395,6 +421,9 @@ function build(renderer) {
   put(box(0.22, 0.05, 0.115, 0.02), clay("#cfcbc2", 0.5), [0, 0.03, 0], cam);
   put(cyl(0.048, 0.05, 0.08), clay(C.ink, 0.4), [0, -0.01, 0.09], cam).rotation.x = Math.PI / 2;
   put(cyl(0.032, 0.032, 0.012), toonMat({ color: "#3d5a9a", roughness: 0.05, metalness: 0.3 }), [0, -0.01, 0.135], cam, { cast: false }).rotation.x = Math.PI / 2;
+  const flash = new THREE.PointLight("#fff4dc", 0, 2.4, 2);
+  flash.position.set(0, 0.05, 0.2);
+  cam.add(flash);
   put(new THREE.IcosahedronGeometry(0.12, 2), clay(C.leaf), [0.04, 1.27, 0.38], shelf);
   put(cyl(0.075, 0.06, 0.13), clay(C.pot), [0.04, 1.17, 0.38], shelf);
 
@@ -482,6 +511,7 @@ function build(renderer) {
   fill.position.set(6, 5, 6);
   scene.add(fill);
 
+  let glowBase = 0;
   function applyTheme() {
     const night = dark.matches;
     wallMat.color.set(night ? C.wallNight : C.wall);
@@ -494,7 +524,7 @@ function build(renderer) {
     fill.intensity = night ? 0.12 : 0.5;
     lamp.intensity = night ? 5 : 0;
     shadeMat.emissiveIntensity = night ? 1.4 : 0;
-    screenGlow.intensity = night ? 1.2 : 0.2;
+    glowBase = night ? 1.2 : 0.2;
     dust.visible = !night;
     ink.uniforms.color.value.set(night ? "#17142a" : "#2a2236");
   }
@@ -502,6 +532,74 @@ function build(renderer) {
 
   // Motion.
   let aim = 0, look = 0, aimY = 0, lookY = 0, frame = 0, visible = true, shown = false;
+  // The page's links point into the room: hovering or focusing one turns the room toward the
+  // thing it belongs to. GitHub lights the laptop on his face, Instagram has the camera turn
+  // and fire, LinkedIn has him look up, and pixtuoid puts its office in the picture frame.
+  const attention = { laptop: 0, camera: 0, hello: 0, pixtuoid: 0 };
+  let pointing = null, flashAt = -Infinity;
+  for (const el of document.querySelectorAll("[data-room]")) {
+    const on = () => {
+      if (el.dataset.room === "camera" && pointing !== "camera") flashAt = performance.now();
+      pointing = el.dataset.room;
+      wake();
+    };
+    const off = () => { if (pointing === el.dataset.room) pointing = null; wake(); };
+    el.addEventListener("pointerenter", on);
+    el.addEventListener("pointerleave", off);
+    el.addEventListener("focusin", on);
+    el.addEventListener("focusout", off);
+  }
+  const lerp = THREE.MathUtils.lerp;
+  // While a link points into the room, a dotted leader runs from it to its thing, redrawn each
+  // frame since the room sways with the pointer. It fades with the attention that drew it.
+  const leader = document.querySelector(".leader");
+  const trails = leader ? [...leader.querySelectorAll("path")] : [], dots = leader ? [...leader.querySelectorAll("circle")] : [];
+  const pointers = new Map([...document.querySelectorAll("[data-room]")].map((el) => [el.dataset.room, el]));
+  const anchor = new THREE.Vector3();
+  const anchors = {
+    laptop: () => lid.localToWorld(anchor.set(0, 0.2, 0)),
+    camera: () => cam.localToWorld(anchor.set(0, 0, 0)),
+    hello: () => head.localToWorld(anchor.set(0, 0.02, 0.22)),
+    pixtuoid: () => office.localToWorld(anchor.set(0, -0.3, 0)),
+  };
+  let last = null;
+  function placeLeader() {
+    if (!leader) return;
+    if (pointing) last = pointing;
+    const a = last ? attention[last] : 0;
+    leader.style.opacity = a.toFixed(3);
+    if (a < 0.01) return;
+    const el = pointers.get(last), cr = canvas.getBoundingClientRect();
+    const v = anchors[last]().project(camera);
+    const tx = cr.left + ((v.x + 1) / 2) * cr.width, ty = cr.top + ((1 - v.y) / 2) * cr.height;
+    // It leaves the top of the link (of a project's picture), so it crosses no other link. Beside
+    // the room it runs right along the gap above the links before rising, clear of the words.
+    const from = el.querySelector("figure") ?? el, r = from.getBoundingClientRect(), sx = r.left + r.width / 2, sy = r.top - 8;
+    let d;
+    if (from === el && cr.left > r.right) {
+      const gy = sy - 10, gx = cr.left;
+      d = `M${sx} ${sy}Q${sx} ${gy} ${sx + 12} ${gy}L${gx} ${gy}C${(gx + tx) / 2} ${gy} ${tx} ${(gy + ty) / 2} ${tx} ${ty}`;
+    } else {
+      const my = (sy + ty) / 2;
+      d = `M${sx} ${sy}C${sx} ${my} ${tx} ${my} ${tx} ${ty}`;
+    }
+    for (const path of trails) path.setAttribute("d", d);
+    for (const c of dots) { c.setAttribute("cx", tx); c.setAttribute("cy", ty); }
+  }
+  addEventListener("scroll", () => { if (last && !frame) draw(); }, { passive: true });
+  function react(now, calm) {
+    for (const k in attention) attention[k] += ((pointing === k ? 1 : 0) - attention[k]) * (calm ? 1 : 0.14);
+    const { laptop: l, camera: c, hello: h, pixtuoid: p } = attention;
+    screenGlow.intensity = glowBase + 2.4 * l;
+    cam.rotation.y = 0.8 - 0.55 * c;
+    cam.position.y = 1.2 + 0.05 * c;
+    flash.intensity = calm ? 0 : 7 * Math.max(0, 1 - (now - flashAt) / 380) ** 2;
+    head.rotation.x = lerp(head.rotation.x, -0.24, h);
+    head.rotation.y = lerp(head.rotation.y, 0.75, h);
+    head.rotation.z = lerp(head.rotation.z, 0, h);
+    forearms.forEach((f) => { f.rotation.x *= 1 - h; });
+    officeMat.opacity = p;
+  }
   const t0 = performance.now();
   const dustBase = dust.geometry.attributes.position.array.slice();
   addEventListener("pointermove", (e) => {
@@ -550,7 +648,9 @@ function build(renderer) {
       head.rotation.set(0.04, 0.34, 0);
       for (const n of notes) n.s.material.opacity = 0;
     }
+    react(now, calm);
     renderer.render(scene, camera);
+    placeLeader();
     if (!shown) { shown = true; canvas.classList.add("ready"); }
   }
 
