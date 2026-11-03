@@ -6,9 +6,14 @@
 <title>Not found · Ivan</title>
 <meta name="color-scheme" content="light dark">
 <style>
-  :root { --bg: #f7f5f2; --text: #1d1b19; --muted: #5c5752; --accent: #b3530c; }
+  @font-face {
+    font-family: "Fusion Pixel 8px";
+    src: url("/fonts/fusion-pixel-8px.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root { --bg: #eef1f8; --text: #1f2335; --muted: #4a5072; --link: #2b52c4; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #141518; --text: #ecebe8; --muted: #a7a39d; --accent: #f2a65a; }
+    :root { --bg: #1a1b26; --text: #c0caf5; --muted: #9aa5ce; --link: #7aa2f7; }
   }
   body {
     margin: 0;
@@ -17,17 +22,24 @@
     place-items: center;
     background: var(--bg);
     color: var(--text);
-    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    text-align: center;
+    font: 18px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    padding: 1rem;
   }
-  p { color: var(--muted); }
-  a { color: var(--accent); }
+  h1 {
+    font: 400 24px/32px "Fusion Pixel 8px", ui-monospace, monospace;
+    -webkit-font-smoothing: none;
+    margin: 0 0 .5rem;
+  }
+  p { margin: 0; color: var(--muted); }
+  a { color: var(--link); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  a:hover { background: var(--link); color: var(--bg); text-decoration: none; }
+  a:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Nothing here</h1>
-  <p><a href="/">Back to ivanwng97.com</a></p>
+  <h1>Nothing at this desk</h1>
+  <p>This page doesn’t exist. <a href="/">Go to ivanwng97.com</a></p>
 </main>
 </body>
 </html>
