@@ -62,7 +62,7 @@ function build(renderer) {
     wall: "#f1e6d6", wallNight: "#5a5277", floor: "#d9a978", rug: "#f4ead8", rugLine: "#e2a35a",
     sofa: "#7f9cc0", cushion: "#8eaacc", mustard: "#e8b65a", coral: "#ee8a72", sage: "#7fa889",
     leaf: "#5f9a6c", pot: "#e9cdb2", wood: "#b9805a", woodDark: "#8a5a3e", ink: "#2b2a35",
-    metal: "#d7d8de", record: "#1d1b22", skin: "#f6d3b8", hair: "#1c181e", tee: "#2f2e37",
+    metal: "#d7d8de", record: "#1d1b22", skin: "#f6d3b8", hair: "#2b2429", tee: "#2f2e37",
     denim: "#4f6f9b", shoe: "#f5f4f1", books: ["#ee8a72", "#7f9cc0", "#7fa889", "#e8b65a", "#a68bc4", "#f3e4cc", "#5f7f9a"],
   };
 
@@ -231,41 +231,44 @@ function build(renderer) {
   const cap = put(new THREE.SphereGeometry(0.25, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.008, -0.03], head);
   cap.rotation.x = -0.8;
   for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.065, 16, 12), hair, [s * 0.206, 0.075, -0.06], head).scale.set(0.33, 0.8, 1.05);
-  // The longer top, parted three-to-seven on his right: two shells over the cap, the long side
-  // fuller and combed across to his left, the short side down to his right, scalp in the part.
+  // The longer top, parted three-to-seven on his right and blown dry: two shells over the cap,
+  // each pushed outward into a soft mass that rises off the hairline, ridges running the way it
+  // is combed, and sinking back to the scalp at the part, so the part is a crease between them.
   // A shell is a sphere band whose pole faces forward, so its azimuth runs around the face:
   // PI is his left, 1.5 PI the crown line, 2 PI his right.
   const PART = Math.PI * 1.5 + 0.33, GAP = 0.1;
-  const topHair = (r, y) => {
-    const g = new THREE.Group();
-    g.position.set(0, y, -0.01);
-    g.rotation.x = -0.18;
-    head.add(g);
-    return (from, to, hairline) => {
-      const shell = new THREE.SphereGeometry(r, 48, 32, from, to - from, hairline, Math.PI - hairline);
-      shell.rotateX(Math.PI / 2);
-      return put(shell, hair, [0, 0, 0], g);
-    };
-  };
-  topHair(0.28, 0.03)(Math.PI + 0.5, PART - GAP / 2, 0.6);
-  topHair(0.264, 0.01)(PART + GAP / 2, Math.PI * 2 - 0.75, 0.66);
+  const top = new THREE.Group();
+  top.position.set(0, 0, -0.01);
+  top.rotation.x = -0.18;
+  head.add(top);
+  const SEG_W = 64, SEG_H = 40;
+  const ramp = (x, a, b) => THREE.MathUtils.smoothstep(x, a, b);
   const along = (r, phi, theta) => new THREE.Vector3(-r * Math.cos(phi) * Math.sin(theta), -r * Math.sin(phi) * Math.sin(theta), r * Math.cos(theta));
-  const scalp = new THREE.Group();
-  scalp.position.set(0, 0.016, -0.01);
-  scalp.rotation.x = -0.18;
-  head.add(scalp);
-  const partLine = new THREE.CatmullRomCurve3([0.66, 0.95, 1.25, 1.55].map((th) => along(0.262, PART, th)));
-  put(new THREE.TubeGeometry(partLine, 24, 0.007, 6), clay("#e9bfa0"), [0, 0, 0], scalp, { cast: false });
-  // Comb lines on the long side, sweeping from the part toward his left temple.
-  const sheen = clay("#433a47");
-  const combs = new THREE.Group();
-  combs.position.set(0, 0.03, -0.01);
-  combs.rotation.x = -0.18;
-  head.add(combs);
-  for (const [th, a0, len] of [[0.82, 0.75, 0.95], [1.12, 0.62, 1.05]]) {
-    const streak = put(new THREE.TorusGeometry(0.282 * Math.sin(th), 0.006, 5, 24, len), sheen, [0, 0, 0.282 * Math.cos(th)], combs, { cast: false });
-    streak.rotation.z = a0;
+  // `rise0`/`rise1` are how far in from each side edge the mass builds; a short one at the part
+  // lifts the hair at its roots. `tufts` points the front edge into that many locks.
+  function topHair(r, y, from, to, hairline, height, rise0, rise1, tufts) {
+    const g = new THREE.SphereGeometry(r, SEG_W, SEG_H, from, to - from, hairline, Math.PI - hairline);
+    const pos = g.attributes.position;
+    for (let iy = 0, i = 0; iy <= SEG_H; iy++) {
+      const th = hairline + (iy / SEG_H) * (Math.PI - hairline);
+      const front = ramp(th, hairline, hairline + 0.22) * (1 - ramp(th, 1.5, 2.5)) * (1 + 0.5 * (1 - ramp(th, hairline, hairline + 0.7)));
+      const ridges = 1 + 0.35 * Math.sin((th - hairline) * 11);
+      const fringe = 1 - ramp(th, hairline, hairline + 0.45);
+      for (let ix = 0; ix <= SEG_W; ix++, i++) {
+        const u = ix / SEG_W;
+        const across = ramp(u, 0, rise0) * ramp(1 - u, 0, rise1) * (0.8 + 0.2 * Math.sin(u * Math.PI * 7));
+        const lock = 0.16 * Math.max(0, Math.sin(u * Math.PI * tufts)) ** 2 * across;
+        const p = along(r + height * front * ridges * across, from + u * (to - from), th - lock * fringe);
+        pos.setXYZ(i, p.x, p.y, p.z);
+      }
+    }
+    g.computeVertexNormals();
+    return put(g, hair, [0, y, 0], top);
   }
+  topHair(0.266, 0.015, Math.PI + 0.45, PART - GAP / 2, 0.6, 0.065, 0.35, 0.12, 5);
+  topHair(0.26, 0.008, PART + GAP / 2, Math.PI * 2 - 0.7, 0.66, 0.035, 0.15, 0.45, 2);
+  const partLine = new THREE.CatmullRomCurve3([0.66, 0.85, 1.05, 1.25].map((th) => along(0.262, PART, th)));
+  put(new THREE.TubeGeometry(partLine, 24, 0.007, 6), clay("#dcae92"), [0, 0.016, 0], top, { cast: false });
   // Dark oval eyes with a pinpoint of light, straight brows, a small nose and a short mouth line.
   const iris = toonMat({ color: "#1f1917" });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
