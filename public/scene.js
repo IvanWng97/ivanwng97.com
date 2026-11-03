@@ -378,6 +378,24 @@ function build(renderer) {
   put(box(0.17, 0.014, 0.1, 0.006), pad, [0, 0, 0], handheld);
   put(new THREE.PlaneGeometry(0.14, 0.08), new THREE.MeshBasicMaterial({ color: "#3a4157" }), [0, 0.0075, 0], handheld, { cast: false }).rotation.x = -Math.PI / 2;
   for (const [s, color] of [[-1, "#20b8e6"], [1, "#ff4b3a"]]) put(box(0.04, 0.016, 0.1, 0.012), clay(color), [s * 0.105, 0, 0], handheld);
+  // A paper plane, two wings and a keel, that the email link sends from the laptop out of the door.
+  const dart = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute([
+    0, 0, 0.12, -0.075, 0, -0.06, 0, 0, -0.04,
+    0, 0, 0.12, 0, 0, -0.04, 0.075, 0, -0.06,
+    0, 0, 0.12, 0, -0.035, -0.05, 0, 0, -0.04,
+  ], 3));
+  dart.computeVertexNormals();
+  const paperPlane = new THREE.Mesh(dart, toonMat({ color: "#fbf8f1", side: THREE.DoubleSide }));
+  paperPlane.scale.setScalar(1.8);
+  paperPlane.visible = false;
+  room.add(paperPlane);
+  const doorX = (door.left + door.right) / 2;
+  // Seen isometrically, height and nearness cancel on screen, so it climbs first, crosses the room
+  // to the right, then dips through the door; the leg outside is short, since the view hides it.
+  const flight = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.05, 1.12, -0.85), new THREE.Vector3(0.6, 2.1, -1.0), new THREE.Vector3(1.3, 2.0, -1.7),
+    new THREE.Vector3(doorX, 1.5, backZ + 0.12), new THREE.Vector3(doorX + 0.05, 1.6, backZ - 0.5),
+  ]);
 
   // Notes drifting up from the record.
   const noteTex = (() => {
@@ -534,12 +552,15 @@ function build(renderer) {
   let aim = 0, look = 0, aimY = 0, lookY = 0, frame = 0, visible = true, shown = false;
   // The page's links point into the room: hovering or focusing one turns the room toward the
   // thing it belongs to. GitHub lights the laptop on his face, Instagram has the camera turn
-  // and fire, LinkedIn has him look up, and pixtuoid puts its office in the picture frame.
-  const attention = { laptop: 0, camera: 0, hello: 0, pixtuoid: 0 };
-  let pointing = null, flashAt = -Infinity;
+  // and fire, LinkedIn has him look up, Email sends a paper plane out of the door, and pixtuoid
+  // puts its office in the picture frame.
+  const attention = { laptop: 0, camera: 0, hello: 0, mail: 0, pixtuoid: 0 };
+  const FLIGHT_MS = 1600;
+  let pointing = null, flashAt = -Infinity, sentAt = -Infinity;
   for (const el of document.querySelectorAll("[data-room]")) {
     const on = () => {
       if (el.dataset.room === "camera" && pointing !== "camera") flashAt = performance.now();
+      if (el.dataset.room === "mail" && pointing !== "mail") sentAt = performance.now();
       pointing = el.dataset.room;
       wake();
     };
@@ -560,6 +581,7 @@ function build(renderer) {
     laptop: () => lid.localToWorld(anchor.set(0, 0.2, 0)),
     camera: () => cam.localToWorld(anchor.set(0, 0, 0)),
     hello: () => head.localToWorld(anchor.set(0, 0.02, 0.22)),
+    mail: () => room.localToWorld(anchor.set(doorX, 1.45, backZ)),
     pixtuoid: () => office.localToWorld(anchor.set(0, -0.3, 0)),
   };
   let last = null;
@@ -599,7 +621,18 @@ function build(renderer) {
     head.rotation.z = lerp(head.rotation.z, 0, h);
     forearms.forEach((f) => { f.rotation.x *= 1 - h; });
     officeMat.opacity = p;
+    // In flight the plane eases along its path nose first, rocking; held still, it waits on the laptop.
+    const flown = (now - sentAt) / FLIGHT_MS;
+    paperPlane.visible = calm ? attention.mail > 0.5 : flown > 0 && flown < 1;
+    if (paperPlane.visible) {
+      const u = calm ? 0 : flown * flown * (3 - 2 * flown);
+      flight.getPointAt(u, paperPlane.position);
+      flight.getTangentAt(u, heading);
+      paperPlane.lookAt(room.localToWorld(heading.add(paperPlane.position)));
+      if (!calm) paperPlane.rotateZ(Math.sin(flown * 9) * 0.35);
+    }
   }
+  const heading = new THREE.Vector3();
   const t0 = performance.now();
   const dustBase = dust.geometry.attributes.position.array.slice();
   addEventListener("pointermove", (e) => {
