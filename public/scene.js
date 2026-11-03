@@ -1,6 +1,6 @@
 // Ivan's room in golden hour, a cel-shaded diorama built from primitives: sun
 // through the balcony door, a turntable going, a bookshelf with a camera, a
-// print above the sofa. Night swaps the sun for the lamp, the laptop and the city.
+// print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
@@ -399,9 +399,49 @@ function build(renderer) {
   lamp.shadow.radius = 6;
   room.add(lamp);
 
-  // A plant in the corner by the door, and dust turning in the sunlight.
+  // A plant in the front corner, and dust turning in the sunlight.
   put(cyl(0.2, 0.15, 0.36), clay(C.pot), [-1.9, 0.18, 1.55]);
   for (const [x, y, z, s] of [[-1.9, 0.62, 1.55, 0.24], [-2.0, 0.84, 1.6, 0.17], [-1.8, 0.8, 1.48, 0.18], [-1.92, 1.0, 1.52, 0.14]]) put(new THREE.IcosahedronGeometry(s, 2), clay(C.sage), [x, y, z]);
+
+  // His road bike in the open corner, a steel paint with drop bars, its back axle held by a stand
+  // since a road bike has no kickstand. The bike is drawn along local x, front wheel forward.
+  const bike = new THREE.Group();
+  bike.position.set(1.4, 0, 1.15);
+  bike.rotation.y = 0.25;
+  room.add(bike);
+  const WHEEL = 0.34, black = clay(C.ink), paint = clay(C.coral);
+  const rear = [-0.5, WHEEL, 0], front = [0.5, WHEEL, 0], bb = [-0.06, 0.3, 0], seat = [-0.2, 0.8, 0];
+  const headTop = [0.36, 0.82, 0], headLow = [0.4, 0.68, 0];
+  for (const hub of [rear, front]) {
+    put(new THREE.TorusGeometry(WHEEL - 0.024, 0.024, 10, 56), black, hub, bike);
+    put(new THREE.TorusGeometry(WHEEL - 0.055, 0.008, 6, 56), rimMat, hub, bike, { cast: false });
+    put(cyl(0.022, 0.022, 0.09, 12), rimMat, hub, bike, { cast: false }).rotation.x = Math.PI / 2;
+  }
+  for (const [a, b] of [[bb, seat], [seat, headTop], [bb, headLow]]) limb(a, b, 0.019, paint, bike);
+  limb(headLow, headTop, 0.024, paint, bike);
+  for (const s of [-1, 1]) {
+    const axle = [rear[0], rear[1], s * 0.045];
+    limb(bb, axle, 0.013, paint, bike);
+    limb(seat, axle, 0.012, paint, bike);
+    limb(headLow, [front[0], front[1], s * 0.045], 0.013, paint, bike);
+    for (const dx of [-0.16, 0.16]) limb([rear[0], rear[1], s * 0.07], [rear[0] + dx, 0.01, s * 0.2], 0.01, black, bike);
+  }
+  limb(seat, [-0.23, 0.92, 0], 0.012, rimMat, bike);
+  put(box(0.2, 0.035, 0.085, 0.015), black, [-0.25, 0.94, 0], bike).rotation.z = 0.05;
+  limb(headTop, [0.45, 0.86, 0], 0.013, rimMat, bike);
+  limb([0.45, 0.86, -0.19], [0.45, 0.86, 0.19], 0.012, black, bike);
+  for (const s of [-1, 1]) {
+    const z = s * 0.19;
+    limb([0.45, 0.86, z], [0.53, 0.81, z], 0.012, black, bike);
+    limb([0.53, 0.81, z], [0.5, 0.72, z], 0.012, black, bike);
+    limb([0.5, 0.72, z], [0.43, 0.72, z], 0.012, black, bike);
+  }
+  put(cyl(0.09, 0.09, 0.012, 32), rimMat, [bb[0], bb[1], 0.06], bike, { cast: false }).rotation.x = Math.PI / 2;
+  for (const s of [-1, 1]) {
+    const crank = put(box(0.022, 0.17, 0.016, 0.006), rimMat, [bb[0] + s * 0.05, bb[1] - s * 0.06, s * 0.075], bike, { cast: false });
+    crank.rotation.z = s * 0.7;
+    put(box(0.08, 0.018, 0.06, 0.006), black, [bb[0] + s * 0.1, bb[1] - s * 0.12, s * 0.11], bike);
+  }
   const motes = new Float32Array(60 * 3);
   for (let i = 0; i < motes.length; i += 3) {
     motes[i] = 0.4 + rand() * 1.6;

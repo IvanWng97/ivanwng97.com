@@ -8,7 +8,11 @@
 <meta property="og:title" content="Ivan">
 <meta property="og:description" content="Mobile dev. Building small things in my spare time.">
 <meta property="og:url" content="https://ivanwng97.com/">
-<meta property="og:image" content="https://ivanwng97.com/room.jpg">
+<meta property="og:image" content="https://ivanwng97.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="628">
+<meta property="og:image:alt" content="Ivan's cartoon room at night: him on the sofa with a laptop, a bookshelf, a turntable and a road bike.">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f2f0fa" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#110f26" media="(prefers-color-scheme: dark)">
@@ -17,6 +21,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400;500&display=swap">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" crossorigin>
+<link rel="modulepreload" href="/scene.js">
 <style>
   /* Dusk outside an office window; by day, the same room in morning light. */
   :root {
@@ -59,7 +65,7 @@
     gap: 2rem;
     max-width: 76rem;
     margin: 0 auto;
-    padding: 4rem 1.5rem 2rem;
+    padding: 4rem 1.5rem 0;
   }
   .intro { position: relative; z-index: 1; }
   h1 {
@@ -118,7 +124,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
     gap: 2rem;
   }
-  .projects { grid-column: 1 / -1; margin-top: 2rem; }
+  .projects { grid-column: 1 / -1; }
   .cards {
     list-style: none; margin: 0; padding: 0;
     display: grid; gap: 1.25rem;
@@ -188,7 +194,7 @@
   </div>
   <div class="stage">
     <canvas id="scene" aria-hidden="true"></canvas>
-    <img class="fallback" src="/room.jpg" width="1200" height="1200" alt="A cartoon of Ivan on a sofa with his laptop: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, and a sunset print on the wall.">
+    <img class="fallback" src="/room.jpg" width="1200" height="1200" alt="A cartoon of Ivan on a sofa with his laptop: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, a sunset print on the wall, and his road bike on a stand.">
     <noscript><style>#scene { display: none; } .fallback { display: block; }</style></noscript>
   </div>
 </header>
