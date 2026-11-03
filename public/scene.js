@@ -343,7 +343,21 @@ function build(renderer) {
   platter.position.set(1.4, 0.655, -1.55);
   room.add(platter);
   put(cyl(0.17, 0.17, 0.015, 48), toonMat({ color: C.record, roughness: 0.3 }), [0, 0, 0], platter);
-  put(cyl(0.055, 0.055, 0.018, 32), clay(C.coral), [0, 0.001, 0], platter);
+  const label = put(cyl(0.065, 0.065, 0.018, 32), clay(C.coral), [0, 0.001, 0], platter);
+  // The label takes the cover of what Ivan is playing, once the page has asked Spotify.
+  const covers = new THREE.TextureLoader();
+  let coverUrl = null;
+  function showCover(track) {
+    if (!track?.cover || track.cover === coverUrl) return;
+    coverUrl = track.cover;
+    covers.load(coverUrl, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      label.material = toonMat({ map: tex });
+      wake();
+    });
+  }
+  showCover(window.nowPlaying);
+  addEventListener("nowplaying", (e) => showCover(e.detail));
   put(box(0.04, 0.006, 0.01, 0.002), clay("#fff"), [0.03, 0.011, 0], platter, { cast: false });
   put(box(0.015, 0.015, 0.26, 0.006), rimMat, [1.62, 0.68, -1.52]).rotation.y = 0.45;
   for (const [i, c] of [[0, C.coral], [1, C.sage], [2, C.mustard]]) put(box(0.035, 0.42, 0.42, 0.01), clay(c), [2.02 + i * 0.045, 0.22, -1.05 + i * 0.02]).rotation.z = -0.1;
@@ -406,10 +420,10 @@ function build(renderer) {
     g.fillText("♪", 32, 34);
     return new THREE.CanvasTexture(c);
   })();
-  const notes = [];
+  const notes = [], NOTE_SIZE = 0.15;
   for (let i = 0; i < 4; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTex, color: "#ffcf86", transparent: true, depthWrite: false, toneMapped: false }));
-    s.scale.setScalar(0.15);
+    s.scale.setScalar(NOTE_SIZE);
     room.add(s);
     notes.push({ s, phase: i / 4 });
   }
@@ -552,9 +566,9 @@ function build(renderer) {
   let aim = 0, look = 0, aimY = 0, lookY = 0, frame = 0, visible = true, shown = false;
   // The page's links point into the room: hovering or focusing one turns the room toward the
   // thing it belongs to. GitHub lights the laptop on his face, Instagram has the camera turn
-  // and fire, LinkedIn has him look up, Email sends a paper plane out of the door, and pixtuoid
-  // puts its office in the picture frame.
-  const attention = { laptop: 0, camera: 0, hello: 0, mail: 0, pixtuoid: 0 };
+  // and fire, LinkedIn has him look up, Email sends a paper plane out of the door, the song line
+  // swells the record's notes, and pixtuoid puts its office in the picture frame.
+  const attention = { laptop: 0, camera: 0, hello: 0, mail: 0, record: 0, pixtuoid: 0 };
   const FLIGHT_MS = 1600;
   let pointing = null, flashAt = -Infinity, sentAt = -Infinity;
   // What is pointed at is asked of the page, not tracked from enter and leave events: a scroll
@@ -588,6 +602,7 @@ function build(renderer) {
     camera: () => cam.localToWorld(anchor.set(0, 0, 0)),
     hello: () => head.localToWorld(anchor.set(0, 0.02, 0.22)),
     mail: () => room.localToWorld(anchor.set(doorX, 1.45, backZ)),
+    record: () => platter.localToWorld(anchor.set(0, 0.02, 0)),
     pixtuoid: () => office.localToWorld(anchor.set(0, -0.3, 0)),
   };
   let last = null;
@@ -630,6 +645,7 @@ function build(renderer) {
     head.rotation.z = lerp(head.rotation.z, 0, h);
     forearms.forEach((f) => { f.rotation.x *= 1 - h; });
     officeMat.opacity = p;
+    for (const n of notes) n.s.scale.setScalar(NOTE_SIZE * (1 + 0.7 * attention.record));
     // In flight the plane eases along its path nose first, rocking; held still, it waits on the laptop.
     const flown = (now - sentAt) / FLIGHT_MS;
     paperPlane.visible = calm ? attention.mail > 0.5 : flown > 0 && flown < 1;

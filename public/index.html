@@ -223,6 +223,16 @@
     transition: border-color .15s ease, color .15s ease;
   }
   .social a:hover { border-color: var(--accent); }
+  .listening { display: flex; align-items: center; gap: .6rem; margin: 1.1rem 0 0; font-size: .95rem; color: var(--muted); }
+  .listening[hidden] { display: none; }
+  .listening .track { color: var(--text); }
+  /* Three bars that dance while a song is actually playing. */
+  .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: .8rem; flex: none; }
+  .eq i { width: 3px; height: 40%; border-radius: 1px; background: var(--accent); }
+  .listening.live .eq i { animation: eq .9s ease-in-out infinite alternate; }
+  .listening.live .eq i:nth-child(2) { animation-delay: -.3s; }
+  .listening.live .eq i:nth-child(3) { animation-delay: -.6s; }
+  @keyframes eq { to { height: 100%; } }
   .social svg {
     width: 1.1rem;
     height: 1.1rem;
@@ -256,6 +266,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     #scene { transition: none; }
+    .listening.live .eq i { animation: none; height: 70%; }
     a { transition: none; }
   }
 </style>
@@ -272,6 +283,7 @@
       <li><a href="https://www.linkedin.com/in/ivanwng97" data-room="hello"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>LinkedIn</a></li>
       <li><a href="mailto:hi@ivanwng97.com" data-room="mail"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>Email</a></li>
     </ul>
+    <p class="listening" data-room="record" hidden><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span><span class="said"></span> <a class="track"></a><span class="by"></span></span></p>
   </div>
   <div class="stage">
     <canvas id="scene" aria-hidden="true"></canvas>
@@ -303,6 +315,30 @@
 
 <svg class="leader" aria-hidden="true"><path class="under"/><path/><circle class="halo" r="11"/><circle r="4.5"/></svg>
 
+<script type="module">
+  // What Ivan is playing on Spotify, asked again each minute while the tab is shown. The room
+  // reads window.nowPlaying and the "nowplaying" event to put the cover on the record's label.
+  const REFRESH_MS = 60_000;
+  const line = document.querySelector(".listening");
+  async function listen() {
+    if (document.hidden) return;
+    const track = await fetch("/api/now-playing").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    line.hidden = !track;
+    if (track) {
+      line.classList.toggle("live", track.playing);
+      line.querySelector(".said").textContent = track.playing ? "Listening to" : "Last played";
+      const link = line.querySelector(".track");
+      link.textContent = track.title;
+      link.href = track.url;
+      line.querySelector(".by").textContent = ` by ${track.artist}`;
+    }
+    window.nowPlaying = track;
+    dispatchEvent(new CustomEvent("nowplaying", { detail: track }));
+  }
+  listen();
+  setInterval(listen, REFRESH_MS);
+  document.addEventListener("visibilitychange", listen);
+</script>
 <script type="module" src="/scene.js"></script>
 <script type="module">
   // The office plays only while it's on screen and motion is welcome.

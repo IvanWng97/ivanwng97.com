@@ -1,6 +1,15 @@
 name = "ivanwng97"
+main = "src/worker.js"
 compatibility_date = "2026-11-03"
 
 [assets]
 directory = "./public/"
 not_found_handling = "404-page"
+run_worker_first = ["/api/*"]
+
+[vars]
+SPOTIFY_CLIENT_ID = ""
+
+[[kv_namespaces]]
+binding = "SPOTIFY"
+id = "89f2d361c38c401d8f0e85cf747016fd"
