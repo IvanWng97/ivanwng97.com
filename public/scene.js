@@ -557,19 +557,25 @@ function build(renderer) {
   const attention = { laptop: 0, camera: 0, hello: 0, mail: 0, pixtuoid: 0 };
   const FLIGHT_MS = 1600;
   let pointing = null, flashAt = -Infinity, sentAt = -Infinity;
-  for (const el of document.querySelectorAll("[data-room]")) {
-    const on = () => {
-      if (el.dataset.room === "camera" && pointing !== "camera") flashAt = performance.now();
-      if (el.dataset.room === "mail" && pointing !== "mail") sentAt = performance.now();
-      pointing = el.dataset.room;
-      wake();
-    };
-    const off = () => { if (pointing === el.dataset.room) pointing = null; wake(); };
-    el.addEventListener("pointerenter", on);
-    el.addEventListener("pointerleave", off);
-    el.addEventListener("focusin", on);
-    el.addEventListener("focusout", off);
+  // What is pointed at is asked of the page, not tracked from enter and leave events: a scroll
+  // moves links out from under a still mouse and some browsers send no leave for it. The mouse's
+  // spot is hit-tested on every move and scroll; a touch never hovers; focus counts only when the
+  // keyboard put it there, since a clicked link keeps focus after the mouse has gone.
+  let px = -1, py = -1;
+  function aimAt() {
+    const hovered = px < 0 ? null : document.elementFromPoint(px, py)?.closest("[data-room]");
+    const active = document.activeElement;
+    const focused = active?.matches(":focus-visible") ? active.closest("[data-room]") : null;
+    const next = (hovered ?? focused)?.dataset.room ?? null;
+    if (next === pointing) return;
+    if (next === "camera") flashAt = performance.now();
+    if (next === "mail") sentAt = performance.now();
+    pointing = next;
+    wake();
   }
+  addEventListener("focusin", aimAt);
+  addEventListener("focusout", () => setTimeout(aimAt));
+  document.documentElement.addEventListener("pointerleave", () => { px = py = -1; aimAt(); });
   const lerp = THREE.MathUtils.lerp;
   // While a link points into the room, a dotted leader runs from it to its thing, redrawn each
   // frame since the room sways with the pointer. It fades with the attention that drew it.
@@ -597,6 +603,7 @@ function build(renderer) {
     // It leaves the top of the link (of a project's picture), so it crosses no other link. Beside
     // the room it runs right along the gap above the links before rising, clear of the words.
     const from = el.querySelector("figure") ?? el, r = from.getBoundingClientRect(), sx = r.left + r.width / 2, sy = r.top - 8;
+    if (r.bottom < 0 || r.top > innerHeight) { leader.style.opacity = "0"; return; }
     let d;
     if (from === el && cr.left > r.right) {
       const gy = sy - 10, gx = cr.left;
@@ -608,9 +615,11 @@ function build(renderer) {
     for (const path of trails) path.setAttribute("d", d);
     for (const c of dots) { c.setAttribute("cx", tx); c.setAttribute("cy", ty); }
   }
-  addEventListener("scroll", () => { if (last && !frame) draw(); }, { passive: true });
+  addEventListener("scroll", () => { aimAt(); if (last && !frame) draw(); }, { passive: true });
   function react(now, calm) {
-    for (const k in attention) attention[k] += ((pointing === k ? 1 : 0) - attention[k]) * (calm ? 1 : 0.14);
+    // Between frames nothing eases, so with the loop stopped a change lands whole, never stuck halfway.
+    const ease = calm || !running() ? 1 : 0.14;
+    for (const k in attention) attention[k] += ((pointing === k ? 1 : 0) - attention[k]) * ease;
     const { laptop: l, camera: c, hello: h, pixtuoid: p } = attention;
     screenGlow.intensity = glowBase + 2.4 * l;
     cam.rotation.y = 0.8 - 0.55 * c;
@@ -638,6 +647,10 @@ function build(renderer) {
   addEventListener("pointermove", (e) => {
     aim = (e.clientX / innerWidth - 0.5) * 2;
     aimY = (e.clientY / innerHeight - 0.5) * 2;
+    if (e.pointerType === "touch") return;
+    px = e.clientX;
+    py = e.clientY;
+    aimAt();
   }, { passive: true });
 
   function resize() {
