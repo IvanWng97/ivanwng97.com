@@ -1,9 +1,8 @@
-// Ivan's room in golden hour, a soft-clay diorama built from primitives: sun
+// Ivan's room in golden hour, a cel-shaded diorama built from primitives: sun
 // through the balcony door, a turntable going, a bookshelf with a camera, a
 // print above the sofa. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const canvas = document.getElementById("scene");
 const still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -20,13 +19,10 @@ if (renderer) build(renderer);
 function build(renderer) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.AgXToneMapping;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
   // An isometric view: orthographic, so the room reads like a model on a desk.
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -37,7 +33,19 @@ function build(renderer) {
   const room = new THREE.Group();
   scene.add(room);
 
-  const clay = (color, roughness = 0.82) => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 });
+  // Cel shading: three crisp bands of light, and ink round every solid shape.
+  const bands = new THREE.DataTexture(new Uint8Array([90, 168, 255]), 3, 1, THREE.RedFormat);
+  bands.minFilter = bands.magFilter = THREE.NearestFilter;
+  bands.needsUpdate = true;
+  const toonMat = ({ roughness, metalness, ...rest } = {}) => new THREE.MeshToonMaterial({ gradientMap: bands, ...rest });
+  const clay = (color) => toonMat({ color });
+  const INK = 0.013;
+  const ink = new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color("#2a2236") } },
+    vertexShader: `void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * ${INK.toFixed(4)}, 1.0); }`,
+    fragmentShader: `uniform vec3 color; void main() { gl_FragColor = vec4(color, 1.0); }`,
+    side: THREE.BackSide,
+  });
   const box = (w, h, d, r = 0.05) => new RoundedBoxGeometry(w, h, d, 4, Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001));
   const cyl = (rt, rb, h, s = 40) => new THREE.CylinderGeometry(rt, rb, h, s);
   function put(geometry, material, at, parent = room, { cast = true, receive = true } = {}) {
@@ -45,6 +53,7 @@ function build(renderer) {
     m.position.set(...at);
     m.castShadow = cast;
     m.receiveShadow = receive;
+    if (cast) m.add(new THREE.Mesh(geometry, ink));
     parent.add(m);
     return m;
   }
@@ -80,7 +89,7 @@ function build(renderer) {
 
   // Room: floor slab, side wall, and a back wall framed round the balcony door.
   const W = 4.8, D = 4.2, H = 2.8, T = 0.2;
-  const floorMat = new THREE.MeshStandardMaterial({ map: planks, roughness: 0.7 });
+  const floorMat = toonMat({ map: planks, roughness: 0.7 });
   put(box(W, 0.28, D, 0.08), floorMat, [0, -0.14, 0]);
   const wallMat = clay(C.wall, 0.95);
   const backZ = -D / 2 + T / 2, sideX = -W / 2 + T / 2;
@@ -146,7 +155,7 @@ function build(renderer) {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
-  put(cyl(1.25, 1.25, 0.025, 64), new THREE.MeshStandardMaterial({ map: rugTex, roughness: 1 }), [-0.15, 0.013, 0.05], room, { cast: false });
+  put(cyl(1.25, 1.25, 0.025, 64), toonMat({ map: rugTex, roughness: 1 }), [-0.15, 0.013, 0.05], room, { cast: false });
   const sofa = clay(C.sofa), cushion = clay(C.cushion);
   put(box(2.3, 0.4, 0.95, 0.12), sofa, [-0.6, 0.28, -1.3]);
   put(box(2.3, 0.62, 0.26, 0.13), sofa, [-0.6, 0.78, -1.68]);
@@ -196,7 +205,7 @@ function build(renderer) {
   laptop.position.set(0, 0.28, 0.33);
   laptop.rotation.set(0.1, Math.PI, 0);
   me.add(laptop);
-  const alu = new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.35, metalness: 0.6 });
+  const alu = toonMat({ color: C.metal, roughness: 0.35, metalness: 0.6 });
   put(box(0.56, 0.03, 0.38, 0.015), alu, [0, 0, 0], laptop);
   const lid = new THREE.Group();
   lid.position.set(0, 0.015, -0.18);
@@ -231,21 +240,20 @@ function build(renderer) {
   for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.07, 16, 12), hair, [s * 0.215, 0.08, -0.06], head).scale.set(0.35, 0.85, 1.05);
   // Eyes with a light in them and thin arched brows; the Memoji's smile reads from the eyes.
   const white = new THREE.MeshBasicMaterial({ color: "#fdfcf9" });
-  const iris = new THREE.MeshStandardMaterial({ color: "#241c19", roughness: 0.25 });
+  const iris = toonMat({ color: "#241c19", roughness: 0.25 });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
   const browMat = clay("#231d20", 0.6);
   for (const s of [-1, 1]) {
     const x = s * 0.085;
-    put(new THREE.SphereGeometry(0.045, 20, 16), white, [x, 0.0, 0.2], head, { cast: false }).scale.set(0.95, 1.05, 0.5);
-    put(new THREE.SphereGeometry(0.03, 20, 16), iris, [x - s * 0.004, -0.004, 0.217], head, { cast: false }).scale.set(1, 1.08, 0.55);
+    put(new THREE.SphereGeometry(0.05, 20, 16), white, [x, 0.0, 0.2], head, { cast: false }).scale.set(0.95, 1.08, 0.5);
+    put(new THREE.SphereGeometry(0.034, 20, 16), iris, [x - s * 0.004, -0.002, 0.219], head, { cast: false }).scale.set(1, 1.08, 0.55);
     put(new THREE.SphereGeometry(0.009, 8, 6), spark, [x + 0.012, 0.012, 0.234], head, { cast: false });
-    const brow = put(new THREE.TorusGeometry(0.05, 0.008, 6, 16, Math.PI * 0.7), browMat, [x, 0.065, 0.215], head, { cast: false });
+    const brow = put(new THREE.TorusGeometry(0.05, 0.008, 6, 16, Math.PI * 0.7), browMat, [x, 0.082, 0.21], head, { cast: false });
     brow.rotation.z = Math.PI * 0.15 + (s > 0 ? 0 : 0.1);
   }
   put(new THREE.SphereGeometry(0.026, 12, 10), skin, [0, -0.055, 0.235], head, { cast: false });
-  // His glasses: thin rims under a darker top bar.
-  const rimMat = new THREE.MeshStandardMaterial({ color: "#c9ccd6", roughness: 0.3, metalness: 0.7 });
-  const barMat = clay("#3b3a45", 0.5);
+  // His glasses: thin silver rims.
+  const rimMat = toonMat({ color: "#c9ccd6", roughness: 0.3, metalness: 0.7 });
   const ring = (() => {
     const s = new THREE.Shape(), w = 0.13, h = 0.095, r = 0.03;
     s.moveTo(-w / 2 + r, -h / 2); s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
@@ -260,7 +268,6 @@ function build(renderer) {
   })();
   for (const s of [-1, 1]) {
     put(ring, rimMat, [s * 0.085, 0.008, 0.232], head, { cast: false });
-    put(box(0.13, 0.014, 0.012, 0.006), barMat, [s * 0.085, 0.052, 0.238], head, { cast: false });
     put(box(0.008, 0.008, 0.2, 0.003), rimMat, [s * 0.155, 0.03, 0.13], head, { cast: false });
     const hoop = put(new THREE.TorusGeometry(0.016, 0.004, 8, 20), rimMat, [s * 0.252, -0.055, -0.01], head, { cast: false });
     hoop.rotation.y = Math.PI / 2;
@@ -286,7 +293,7 @@ function build(renderer) {
     return tex;
   })();
   put(box(1.22, 0.86, 0.05, 0.02), clay("#f8f3ea", 0.6), [-0.65, 1.86, backZ + T / 2 + 0.03]);
-  put(new THREE.PlaneGeometry(1.02, 0.68), new THREE.MeshStandardMaterial({ map: print, roughness: 0.9 }), [-0.65, 1.86, backZ + T / 2 + 0.058], room, { cast: false });
+  put(new THREE.PlaneGeometry(1.02, 0.68), toonMat({ map: print, roughness: 0.9 }), [-0.65, 1.86, backZ + T / 2 + 0.058], room, { cast: false });
 
   // The turntable on a low cabinet by the door, records leaning beside it.
   put(box(0.95, 0.56, 0.55, 0.05), clay(C.wood), [1.45, 0.28, -1.55]);
@@ -295,7 +302,7 @@ function build(renderer) {
   const platter = new THREE.Group();
   platter.position.set(1.4, 0.655, -1.55);
   room.add(platter);
-  put(cyl(0.17, 0.17, 0.015, 48), new THREE.MeshStandardMaterial({ color: C.record, roughness: 0.3 }), [0, 0, 0], platter);
+  put(cyl(0.17, 0.17, 0.015, 48), toonMat({ color: C.record, roughness: 0.3 }), [0, 0, 0], platter);
   put(cyl(0.055, 0.055, 0.018, 32), clay(C.coral), [0, 0.001, 0], platter);
   put(box(0.04, 0.006, 0.01, 0.002), clay("#fff"), [0.03, 0.011, 0], platter, { cast: false });
   put(box(0.015, 0.015, 0.26, 0.006), rimMat, [1.62, 0.68, -1.52]).rotation.y = 0.45;
@@ -342,14 +349,14 @@ function build(renderer) {
   put(box(0.24, 0.15, 0.11, 0.03), clay(C.ink, 0.5), [0, 0, 0], cam);
   put(box(0.22, 0.05, 0.115, 0.02), clay("#cfcbc2", 0.5), [0, 0.03, 0], cam);
   put(cyl(0.048, 0.05, 0.08), clay(C.ink, 0.4), [0, -0.01, 0.09], cam).rotation.x = Math.PI / 2;
-  put(cyl(0.032, 0.032, 0.012), new THREE.MeshStandardMaterial({ color: "#3d5a9a", roughness: 0.05, metalness: 0.3 }), [0, -0.01, 0.135], cam, { cast: false }).rotation.x = Math.PI / 2;
+  put(cyl(0.032, 0.032, 0.012), toonMat({ color: "#3d5a9a", roughness: 0.05, metalness: 0.3 }), [0, -0.01, 0.135], cam, { cast: false }).rotation.x = Math.PI / 2;
   put(new THREE.IcosahedronGeometry(0.12, 2), clay(C.leaf), [0.04, 1.27, 0.38], shelf);
   put(cyl(0.075, 0.06, 0.13), clay(C.pot), [0.04, 1.17, 0.38], shelf);
 
   // The floor lamp, warm at night.
   put(cyl(0.15, 0.17, 0.04), clay(C.ink, 0.5), [-2.0, 0.02, -1.75]);
   put(cyl(0.018, 0.018, 1.7, 12), clay(C.ink, 0.5), [-2.0, 0.87, -1.75]);
-  const shadeMat = new THREE.MeshStandardMaterial({ color: "#f7e6c6", roughness: 0.9, side: THREE.DoubleSide, emissive: new THREE.Color("#ffb560"), emissiveIntensity: 0 });
+  const shadeMat = toonMat({ color: "#f7e6c6", roughness: 0.9, side: THREE.DoubleSide, emissive: new THREE.Color("#ffb560"), emissiveIntensity: 0 });
   put(new THREE.CylinderGeometry(0.15, 0.27, 0.3, 40, 1, true), shadeMat, [-2.0, 1.82, -1.75]);
   const lamp = new THREE.PointLight("#ffb56b", 0, 5.5, 1.5);
   lamp.position.set(-2.0, 1.65, -1.65);
@@ -383,7 +390,6 @@ function build(renderer) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.5, far: 20 });
-  sun.shadow.radius = 4;
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
@@ -395,18 +401,17 @@ function build(renderer) {
     const night = dark.matches;
     wallMat.color.set(night ? C.wallNight : C.wall);
     viewMat.uniforms.night.value = night ? 1 : 0;
-    hemi.intensity = night ? 0.22 : 0.9;
+    hemi.intensity = night ? 0.5 : 1.25;
     hemi.color.set(night ? "#8e8cff" : "#fff3e3");
     hemi.groundColor.set(night ? "#3a2f48" : "#d2aa82");
-    sun.intensity = night ? 0.5 : 3.2;
+    sun.intensity = night ? 0.6 : 2.4;
     sun.color.set(night ? "#8fa2ff" : "#ffd6a0");
     fill.intensity = night ? 0.12 : 0.5;
-    lamp.intensity = night ? 4.5 : 0;
+    lamp.intensity = night ? 5 : 0;
     shadeMat.emissiveIntensity = night ? 1.4 : 0;
     screenGlow.intensity = night ? 1.2 : 0.2;
-    scene.environmentIntensity = night ? 0.15 : 0.45;
     dust.visible = !night;
-    renderer.toneMappingExposure = night ? 1.15 : 1.12;
+    ink.uniforms.color.value.set(night ? "#17142a" : "#2a2236");
   }
   applyTheme();
 
@@ -441,7 +446,7 @@ function build(renderer) {
       room.rotation.y = look * 0.1;
       room.rotation.x = lookY * 0.03;
       torso.scale.y = 1 + Math.sin(t * 1.6) * 0.015;
-      head.rotation.set(0.14 + Math.sin(t * 0.7) * 0.025, 0.3 + Math.sin(t * 0.31) * 0.14, Math.sin(t * 0.5) * 0.03);
+      head.rotation.set(0.05 + Math.sin(t * 0.7) * 0.025, 0.3 + Math.sin(t * 0.31) * 0.14, Math.sin(t * 0.5) * 0.03);
       forearms.forEach((f, i) => { f.rotation.x = Math.sin(t * 11 + i * 1.7) * 0.05 * (0.5 + 0.5 * Math.sin(t * 0.8)); });
       platter.rotation.y = -t * 3.49;
       for (const n of notes) {
@@ -457,7 +462,7 @@ function build(renderer) {
       dust.geometry.attributes.position.needsUpdate = true;
     } else {
       room.rotation.set(0, 0, 0);
-      head.rotation.set(0.14, 0.3, 0);
+      head.rotation.set(0.05, 0.3, 0);
       for (const n of notes) n.s.material.opacity = 0;
     }
     renderer.render(scene, camera);
