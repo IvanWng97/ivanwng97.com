@@ -1,6 +1,6 @@
 // Ivan's room in golden hour, a cel-shaded diorama built from primitives: sun
-// through the balcony door, a turntable going, a bookshelf with a camera, a
-// print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
+// through the balcony door, a turntable going, headphones, a bookshelf with a
+// camera, a print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
@@ -341,6 +341,17 @@ function build(renderer) {
   put(box(0.04, 0.006, 0.01, 0.002), clay("#fff"), [0.03, 0.011, 0], platter, { cast: false });
   put(box(0.015, 0.015, 0.26, 0.006), rimMat, [1.62, 0.68, -1.52]).rotation.y = 0.45;
   for (const [i, c] of [[0, C.coral], [1, C.sage], [2, C.mustard]]) put(box(0.035, 0.42, 0.42, 0.01), clay(c), [2.02 + i * 0.045, 0.22, -1.05 + i * 0.02]).rotation.z = -0.1;
+  // Headphones standing on the sofa's arm, cups down, the band arched between them along the arm.
+  const cans = new THREE.Group();
+  cans.position.set(0.58, 0.83, -1.02);
+  cans.rotation.y = 0.2;
+  room.add(cans);
+  const shell = clay("#f2efe8"), pad = clay(C.ink);
+  for (const s of [-1, 1]) {
+    put(cyl(0.05, 0.05, 0.04, 24), shell, [0, 0, s * 0.105], cans).rotation.x = Math.PI / 2;
+    put(cyl(0.042, 0.042, 0.022, 24), pad, [0, 0, s * 0.075], cans).rotation.x = Math.PI / 2;
+  }
+  put(new THREE.TorusGeometry(0.11, 0.013, 8, 32, Math.PI), shell, [0, 0.01, 0], cans).rotation.y = Math.PI / 2;
 
   // Notes drifting up from the record.
   const noteTex = (() => {
