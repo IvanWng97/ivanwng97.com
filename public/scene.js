@@ -169,6 +169,7 @@ function build(renderer) {
   // Ivan, Memoji-proportioned, on the right cushion with the laptop on his knees.
   const me = new THREE.Group();
   me.position.set(-0.07, 0.64, -1.27);
+  me.scale.setScalar(1.12);
   room.add(me);
   const skin = clay(C.skin, 0.7), tee = clay(C.tee, 0.92), denim = clay(C.denim, 0.9), hair = clay(C.hair, 0.55);
   const Y = new THREE.Vector3(0, 1, 0);
@@ -217,41 +218,55 @@ function build(renderer) {
   screenGlow.position.set(0, 0.2, 0.25);
   lid.add(screenGlow);
 
-  // The head: round, smooth, young.
+  // The head: round and full-cheeked like his Memoji, drawn large so the face reads at a glance.
   const head = new THREE.Group();
-  head.position.set(0, 0.86, 0.0);
+  head.position.set(0, 0.88, 0.0);
+  head.scale.setScalar(1.18);
   me.add(head);
-  put(new THREE.SphereGeometry(0.245, 40, 32), skin, [0, 0, 0], head).scale.set(1.0, 0.98, 0.96);
-  put(new THREE.SphereGeometry(0.2, 32, 24), skin, [0, -0.07, 0.025], head).scale.set(1.08, 0.8, 0.95);
-  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.05, 16, 12), skin, [s * 0.24, -0.01, -0.01], head).scale.set(0.55, 1, 0.9);
+  put(new THREE.SphereGeometry(0.245, 48, 36), skin, [0, 0, 0], head).scale.set(1.0, 0.97, 0.96);
+  put(new THREE.SphereGeometry(0.205, 40, 28), skin, [0, -0.075, 0.03], head).scale.set(1.1, 0.78, 0.95);
+  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.05, 16, 12), skin, [s * 0.242, -0.01, -0.01], head).scale.set(0.55, 1, 0.9);
   put(new THREE.CapsuleGeometry(0.07, 0.06, 6, 12), skin, [0, -0.25, -0.01], head);
-  // Hair parted three-to-seven: the part on his right, the long side lifting and sweeping over to his left.
-  const PART = -0.085;
-  put(new THREE.SphereGeometry(0.252, 40, 24, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.02, -0.035], head).rotation.x = -0.5;
-  const shortSide = put(new THREE.SphereGeometry(0.12, 24, 16), hair, [PART - 0.08, 0.17, 0.02], head);
-  shortSide.scale.set(0.95, 0.5, 1.6);
-  shortSide.rotation.z = 0.35;
-  const longSide = put(new THREE.SphereGeometry(0.17, 32, 20), hair, [PART + 0.16, 0.2, 0.025], head);
-  longSide.scale.set(1.1, 0.55, 1.35);
-  longSide.rotation.set(0.1, 0, -0.2);
-  const quiff = put(new THREE.SphereGeometry(0.11, 24, 16), hair, [PART + 0.11, 0.21, 0.15], head);
-  quiff.scale.set(1.25, 0.7, 0.85);
-  quiff.rotation.set(0.5, 0.1, -0.35);
-  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.07, 16, 12), hair, [s * 0.215, 0.08, -0.06], head).scale.set(0.35, 0.85, 1.05);
-  // Eyes with a light in them and thin arched brows; the Memoji's smile reads from the eyes.
+  // Hair parted three-to-seven, the part on his right: a cap over the crown and back with the
+  // hairline high, the short side combed flat, the long side lifting, and the fringe in strands
+  // that sweep from the part across his forehead toward his left brow.
+  const PART = -0.09;
+  const cap = put(new THREE.SphereGeometry(0.258, 48, 28, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.015, -0.03], head);
+  cap.rotation.x = -0.62;
+  const flat = put(new THREE.SphereGeometry(0.11, 24, 16), hair, [PART - 0.075, 0.18, 0.05], head);
+  flat.scale.set(0.8, 0.42, 1.5);
+  flat.rotation.z = 0.5;
+  const lift = put(new THREE.SphereGeometry(0.15, 32, 20), hair, [PART + 0.15, 0.215, 0.03], head);
+  lift.scale.set(1.15, 0.52, 1.3);
+  lift.rotation.set(0.15, 0, -0.18);
+  for (const [x, y, z, rz, len] of [
+    [-0.05, 0.165, 0.175, -2.2, 0.19], [0.015, 0.155, 0.19, -2.3, 0.2], [0.08, 0.145, 0.185, -2.4, 0.18],
+    [0.135, 0.135, 0.165, -2.5, 0.13], [0.175, 0.12, 0.13, -2.6, 0.1],
+  ]) {
+    const strand = put(new THREE.ConeGeometry(0.05, len, 16), hair, [x, y, z], head);
+    strand.rotation.set(-0.4, 0, rz);
+  }
+  const partLine = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(PART, 0.215, 0.15), new THREE.Vector3(PART - 0.004, 0.265, 0.03), new THREE.Vector3(PART - 0.008, 0.25, -0.09),
+  ]);
+  put(new THREE.TubeGeometry(partLine, 16, 0.007, 6), clay("#ecc4a6"), [0, 0, 0], head, { cast: false });
+  for (const s of [-1, 1]) put(new THREE.SphereGeometry(0.07, 16, 12), hair, [s * 0.218, 0.075, -0.06], head).scale.set(0.33, 0.8, 1.05);
+  // Big eyes with a light in them, arched brows, and a small smile line instead of lips.
   const white = new THREE.MeshBasicMaterial({ color: "#fdfcf9" });
-  const iris = toonMat({ color: "#241c19", roughness: 0.25 });
+  const iris = toonMat({ color: "#241c19" });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
-  const browMat = clay("#231d20", 0.6);
+  const browMat = clay("#231d20");
   for (const s of [-1, 1]) {
     const x = s * 0.085;
-    put(new THREE.SphereGeometry(0.05, 20, 16), white, [x, 0.0, 0.2], head, { cast: false }).scale.set(0.95, 1.08, 0.5);
-    put(new THREE.SphereGeometry(0.034, 20, 16), iris, [x - s * 0.004, -0.002, 0.219], head, { cast: false }).scale.set(1, 1.08, 0.55);
-    put(new THREE.SphereGeometry(0.009, 8, 6), spark, [x + 0.012, 0.012, 0.234], head, { cast: false });
-    const brow = put(new THREE.TorusGeometry(0.05, 0.008, 6, 16, Math.PI * 0.7), browMat, [x, 0.082, 0.21], head, { cast: false });
-    brow.rotation.z = Math.PI * 0.15 + (s > 0 ? 0 : 0.1);
+    put(new THREE.SphereGeometry(0.055, 24, 18), white, [x, 0.0, 0.198], head, { cast: false }).scale.set(0.95, 1.1, 0.5);
+    put(new THREE.SphereGeometry(0.037, 20, 16), iris, [x - s * 0.004, -0.004, 0.219], head, { cast: false }).scale.set(1, 1.08, 0.55);
+    put(new THREE.SphereGeometry(0.011, 8, 6), spark, [x + 0.013, 0.014, 0.236], head, { cast: false });
+    const brow = put(new THREE.TorusGeometry(0.05, 0.01, 6, 16, Math.PI * 0.68), browMat, [x, 0.09, 0.208], head, { cast: false });
+    brow.rotation.z = Math.PI * 0.16;
   }
-  put(new THREE.SphereGeometry(0.026, 12, 10), skin, [0, -0.055, 0.235], head, { cast: false });
+  put(new THREE.SphereGeometry(0.026, 12, 10), skin, [0, -0.058, 0.235], head, { cast: false });
+  const smile = put(new THREE.TorusGeometry(0.036, 0.006, 6, 18, Math.PI * 0.7), clay("#6b3b38"), [0, -0.105, 0.222], head, { cast: false });
+  smile.rotation.z = Math.PI * 1.15;
   // His glasses: thin silver rims.
   const rimMat = toonMat({ color: "#c9ccd6", roughness: 0.3, metalness: 0.7 });
   const ring = (() => {
@@ -446,7 +461,7 @@ function build(renderer) {
       room.rotation.y = look * 0.1;
       room.rotation.x = lookY * 0.03;
       torso.scale.y = 1 + Math.sin(t * 1.6) * 0.015;
-      head.rotation.set(0.05 + Math.sin(t * 0.7) * 0.025, 0.3 + Math.sin(t * 0.31) * 0.14, Math.sin(t * 0.5) * 0.03);
+      head.rotation.set(0.04 + Math.sin(t * 0.7) * 0.025, 0.34 + Math.sin(t * 0.31) * 0.12, Math.sin(t * 0.5) * 0.03);
       forearms.forEach((f, i) => { f.rotation.x = Math.sin(t * 11 + i * 1.7) * 0.05 * (0.5 + 0.5 * Math.sin(t * 0.8)); });
       platter.rotation.y = -t * 3.49;
       for (const n of notes) {
@@ -462,7 +477,7 @@ function build(renderer) {
       dust.geometry.attributes.position.needsUpdate = true;
     } else {
       room.rotation.set(0, 0, 0);
-      head.rotation.set(0.05, 0.3, 0);
+      head.rotation.set(0.04, 0.34, 0);
       for (const n of notes) n.s.material.opacity = 0;
     }
     renderer.render(scene, camera);
