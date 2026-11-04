@@ -158,7 +158,8 @@ function build(renderer) {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
-  put(cyl(1.25, 1.25, 0.025, 64), toonMat({ map: rugTex, roughness: 1 }), [-0.15, 0.013, 0.05], room, { cast: false });
+  const RUG_H = 0.025, RUG_TOP = 0.0005 + RUG_H;
+  put(cyl(1.25, 1.25, RUG_H, 64), toonMat({ map: rugTex, roughness: 1 }), [-0.15, RUG_TOP - RUG_H / 2, 0.05], room, { cast: false });
   const sofa = clay(C.sofa), cushion = clay(C.cushion);
   put(box(2.3, 0.4, 0.95, 0.12), sofa, [-0.6, 0.28, -1.3]);
   put(box(2.3, 0.62, 0.26, 0.13), sofa, [-0.6, 0.78, -1.68]);
@@ -185,24 +186,49 @@ function build(renderer) {
   }
   const torso = put(new THREE.CapsuleGeometry(0.2, 0.22, 8, 20), tee, [0, 0.36, -0.04], me);
   torso.scale.set(1.08, 1, 0.85);
+  // His limbs hang from joints, so one body takes every pose: at rest each hangs straight down
+  // from its joint, and a pose turns the joints. The knee's frame matches his own when he sits.
+  const DOWN = new THREE.Vector3(0, -1, 0), THIGH = 0.38, UPPER = 0.26, FORE = 0.28;
+  const hips = [], knees = [], shoulders = [], elbows = [];
   for (const s of [-1, 1]) {
-    limb([s * 0.11, 0.06, -0.02], [s * 0.12, 0.06, 0.36], 0.095, denim, me);
-    limb([s * 0.12, 0.06, 0.36], [s * 0.13, -0.42, 0.42], 0.085, denim, me);
-    put(box(0.15, 0.1, 0.27, 0.05), clay(C.shoe, 0.6), [s * 0.13, -0.5, 0.5], me);
-    put(box(0.155, 0.03, 0.28, 0.012), clay("#d9d6cf", 0.6), [s * 0.13, -0.56, 0.5], me);
+    const hip = new THREE.Group();
+    hip.position.set(s * 0.11, 0.06, -0.02);
+    me.add(hip);
+    limb([0, 0, 0], [s * 0.01, -THIGH, 0], 0.095, denim, hip);
+    const knee = new THREE.Group();
+    knee.position.set(s * 0.01, -THIGH, 0);
+    hip.add(knee);
+    limb([0, 0, 0], [s * 0.01, -0.48, 0.06], 0.085, denim, knee);
+    put(box(0.15, 0.1, 0.27, 0.05), clay(C.shoe, 0.6), [s * 0.01, -0.56, 0.14], knee);
+    put(box(0.155, 0.03, 0.28, 0.012), clay("#d9d6cf", 0.6), [s * 0.01, -0.62, 0.14], knee);
+    hips.push(hip);
+    knees.push(knee);
   }
-  const forearms = [];
   for (const s of [-1, 1]) {
-    const shoulder = [s * 0.2, 0.52, -0.05], elbow = [s * 0.25, 0.3, 0.08];
-    limb(shoulder, [s * 0.22, 0.44, -0.02], 0.085, tee, me);
-    limb(shoulder, elbow, 0.055, skin, me);
-    const fore = new THREE.Group();
-    fore.position.set(...elbow);
-    me.add(fore);
-    const hand = [s * -0.12, 0.0, 0.25];
-    limb([0, 0, 0], hand, 0.05, skin, fore);
-    put(new THREE.SphereGeometry(0.058, 16, 12), skin, hand, fore).scale.set(1, 0.75, 1.15);
-    forearms.push(fore);
+    const shoulder = new THREE.Group();
+    shoulder.position.set(s * 0.2, 0.52, -0.05);
+    me.add(shoulder);
+    limb([0, 0, 0], [s * 0.01, -0.087, 0], 0.085, tee, shoulder);
+    limb([0, 0, 0], [0, -UPPER, 0], 0.055, skin, shoulder);
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -UPPER, 0);
+    shoulder.add(elbow);
+    limb([0, 0, 0], [0, -FORE, 0], 0.05, skin, elbow);
+    put(new THREE.SphereGeometry(0.058, 16, 12), skin, [0, -FORE, 0], elbow).scale.set(1, 1.15, 0.8);
+    shoulders.push(shoulder);
+    elbows.push(elbow);
+  }
+  // Turns `joint` so the limb hanging from it points along `to`, given in `frame`'s axes.
+  const toward = new THREE.Vector3(), unturn = new THREE.Quaternion();
+  function turnTo(joint, to, frame = joint.parent) {
+    toward.set(...to).normalize();
+    if (frame !== joint.parent) toward.applyQuaternion(unturn.copy(joint.parent.quaternion).invert());
+    joint.quaternion.setFromUnitVectors(DOWN, toward);
+  }
+  // A leg or an arm along `upper` then `lower`, both in his own axes.
+  function pose(top, bottom, upper, lower) {
+    turnTo(top, upper);
+    turnTo(bottom, lower, me);
   }
   // The laptop on his knees, its screen turned to him.
   const laptop = new THREE.Group();
@@ -279,10 +305,12 @@ function build(renderer) {
   const iris = toonMat({ color: "#1f1917" });
   const spark = new THREE.MeshBasicMaterial({ color: "#ffffff" });
   const browMat = clay("#231d20");
+  const eyes = [];
   for (const s of [-1, 1]) {
     const x = s * 0.083;
-    put(new THREE.SphereGeometry(0.024, 20, 16), iris, [x, -0.002, 0.222], head, { cast: false }).scale.set(0.85, 1.15, 0.5);
-    put(new THREE.SphereGeometry(0.006, 8, 6), spark, [x + 0.007, 0.01, 0.234], head, { cast: false });
+    const eye = put(new THREE.SphereGeometry(0.024, 20, 16), iris, [x, -0.002, 0.222], head, { cast: false });
+    eye.scale.set(0.85, 1.15, 0.5);
+    eyes.push(eye, put(new THREE.SphereGeometry(0.006, 8, 6), spark, [x + 0.007, 0.01, 0.234], head, { cast: false }));
     const brow = put(new THREE.TorusGeometry(0.07, 0.0075, 6, 12, Math.PI * 0.32), browMat, [x, 0.052, 0.214], head, { cast: false });
     brow.rotation.z = Math.PI * 0.34;
   }
@@ -413,21 +441,110 @@ function build(renderer) {
     new THREE.Vector3(doorX, 1.5, backZ + 0.12), new THREE.Vector3(doorX + 0.05, 1.6, backZ - 0.5),
   ]);
 
-  // Notes drifting up from the record.
-  const noteTex = (() => {
+  // Glyphs that drift up and fade: the record's notes, and a sleeper's z's.
+  function drifters(ch, font, color, count) {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
     const g = c.getContext("2d");
-    g.fillStyle = "#fff"; g.font = "52px serif"; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillText("♪", 32, 34);
-    return new THREE.CanvasTexture(c);
-  })();
-  const notes = [], NOTE_SIZE = 0.15;
-  for (let i = 0; i < 4; i++) {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTex, color: "#ffcf86", transparent: true, depthWrite: false, toneMapped: false }));
-    s.scale.setScalar(NOTE_SIZE);
-    room.add(s);
-    notes.push({ s, phase: i / 4 });
+    g.fillStyle = "#fff"; g.font = font; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(ch, 32, 34);
+    const map = new THREE.CanvasTexture(c);
+    return Array.from({ length: count }, (_, i) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, color, transparent: true, depthWrite: false, toneMapped: false }));
+      s.scale.setScalar(NOTE_SIZE);
+      room.add(s);
+      return { s, phase: i / count };
+    });
+  }
+  const NOTE_SIZE = 0.15;
+  const notes = drifters("♪", "52px serif", "#ffcf86", 4);
+  const zs = drifters("z", "bold 46px sans-serif", "#dfe4ff", 3);
+
+  // Each visit finds him doing one of four things, picked at random: at the laptop, listening on
+  // his headphones, asleep on the sofa, or pacing the rug. Listening needs a song playing, so it
+  // waits on the song line and gives way to one of the others when nothing plays.
+  const DOINGS = ["computer", "music", "sleep", "walk"];
+  const SEAT = me.position.clone(), LID_OPEN = lid.rotation.x, LID_SHUT = Math.PI / 2;
+  // Standing, his soles meet the rug: the hip's height less the thigh, the shin and the sole.
+  const STAND_Y = RUG_TOP + (THIGH + 0.635 - 0.06) * me.scale.y;
+  const LOOP = { x: -0.15, z: 0.12, rx: 0.75, rz: 0.5 }, PACE = 0.35, STRIDE = 0.5;
+  let doing = "computer", lidOpen = 1;
+  function become(next) {
+    doing = next;
+    lidOpen = next === "computer" || next === "walk" ? 1 : 0;
+    if (next === "music") {
+      head.add(cans);
+      cans.position.set(0, 0.03, -0.01);
+      cans.rotation.set(0, Math.PI / 2, 0);
+      cans.scale.setScalar(2.35);
+    }
+    if (next === "sleep") for (const e of eyes) e.scale.y *= 0.12;
+    if (next === "walk") {
+      // He left the laptop open on the seat, facing the room.
+      room.add(laptop);
+      laptop.position.set(SEAT.x, 0.66, SEAT.z + 0.07);
+      laptop.rotation.set(0, 0, 0);
+      laptop.scale.setScalar(me.scale.x);
+    }
+    contactStale = true;
+    wake();
+  }
+  const pick = (from) => from[Math.floor(Math.random() * from.length)];
+  const picked = pick(DOINGS);
+  let waiting = picked === "music";
+  // The song line asks again each minute; only its first answer decides.
+  if (waiting) onTrack((track) => {
+    if (!waiting) return;
+    waiting = false;
+    const next = track?.playing ? "music" : pick(DOINGS.filter((d) => d !== "music"));
+    if (next !== "computer") become(next);
+  });
+  else if (picked !== "computer") queueMicrotask(() => become(picked));
+  // Poses him for what he's doing at time `t`, still when `calm`.
+  function act(t, calm) {
+    const sides = [-1, 1];
+    if (doing === "walk") {
+      const at = calm ? 1 : (t * PACE) / 0.64, gait = calm ? 0 : ((t * PACE) / STRIDE) * Math.PI * 2;
+      me.position.set(LOOP.x + LOOP.rx * Math.cos(at), STAND_Y + 0.012 * Math.abs(Math.cos(gait)), LOOP.z + LOOP.rz * Math.sin(at));
+      me.rotation.y = Math.atan2(-LOOP.rx * Math.sin(at), LOOP.rz * Math.cos(at));
+      sides.forEach((s, i) => {
+        const swing = 0.42 * Math.sin(gait + i * Math.PI), bend = 0.55 * Math.max(0, Math.cos(gait + i * Math.PI));
+        pose(hips[i], knees[i], [s * 0.01, -Math.cos(swing), Math.sin(swing)], [s * 0.01, -Math.cos(swing - bend), Math.sin(swing - bend)]);
+        const arm = -0.35 * Math.sin(gait + i * Math.PI);
+        pose(shoulders[i], elbows[i], [s * 0.06, -Math.cos(arm), Math.sin(arm)], [s * 0.02, -Math.cos(arm + 0.35), Math.sin(arm + 0.35)]);
+      });
+      head.rotation.set(0.04, 0, 0);
+      if (!calm) contactStale = true;
+      return;
+    }
+    sides.forEach((s, i) => pose(hips[i], knees[i], [s * 0.01, 0, THIGH], [s * 0.01, -0.48, 0.06]));
+    if (doing === "computer") {
+      const typing = calm ? 0 : (1 - attention.hello) * (0.5 + 0.5 * Math.sin(t * 0.8)) * 0.05;
+      sides.forEach((s, i) => {
+        pose(shoulders[i], elbows[i], [s * 0.05, -0.22, 0.13], [s * -0.12, 0, 0.25]);
+        elbows[i].rotateX(Math.sin(t * 11 + i * 1.7) * typing);
+      });
+      if (calm) head.rotation.set(0.04, 0.34, 0);
+      else head.rotation.set(0.04 + Math.sin(t * 0.7) * 0.025, 0.34 + Math.sin(t * 0.31) * 0.12, Math.sin(t * 0.5) * 0.03);
+    } else if (doing === "music") {
+      sides.forEach((s, i) => pose(shoulders[i], elbows[i], [s * 0.04, -0.24, 0.1], [s * -0.05, -0.1, 0.25]));
+      head.rotation.set(0.06 + (calm ? 0 : 0.09 * Math.max(0, Math.sin(t * Math.PI * 3.2))), 0.12, 0);
+    } else {
+      sides.forEach((s, i) => pose(shoulders[i], elbows[i], [s * 0.04, -0.25, 0.07], [s * -0.08, -0.14, 0.22]));
+      head.rotation.set(0.36, 0.15, 0.32);
+    }
+  }
+  // A sleeper's z's rise from beside his head.
+  const zAt = new THREE.Vector3();
+  function snore(t, calm) {
+    const asleep = doing === "sleep";
+    if (asleep) room.worldToLocal(head.localToWorld(zAt.set(0.22, 0.25, 0)));
+    for (const z of zs) {
+      const k = calm ? z.phase : (t * 0.3 + z.phase) % 1;
+      z.s.visible = asleep;
+      z.s.position.set(zAt.x + k * 0.18, zAt.y + k * 0.45, zAt.z);
+      z.s.material.opacity = asleep ? Math.sin(k * Math.PI) * 0.85 : 0;
+    }
   }
 
   // The bookshelf on the side wall, a camera on its middle shelf.
@@ -535,12 +652,13 @@ function build(renderer) {
   // Contact shadows, so what stands on the floor sits on it: the room seen from just above the
   // rug, looking up, its depth darkened and blurred onto the floor (three.js's
   // webgl_shadow_contact example). Only what stands within GROUNDED of the floor darkens it.
-  const CONTACT_PX = 1024, GROUNDED = 0.45, RUG_TOP = 0.026;
+  const CONTACT_PX = 1024, GROUNDED = 0.45;
   const contactTarget = new THREE.WebGLRenderTarget(CONTACT_PX, CONTACT_PX);
   const contactBlurTarget = new THREE.WebGLRenderTarget(CONTACT_PX, CONTACT_PX);
   contactTarget.texture.generateMipmaps = contactBlurTarget.texture.generateMipmaps = false;
   const contact = new THREE.Group();
-  contact.position.y = RUG_TOP;
+  // Just above the rug, so the rug and the floor lie behind the camera and darken nothing.
+  contact.position.y = RUG_TOP + 0.0005;
   room.add(contact);
   const contactPlaneGeo = new THREE.PlaneGeometry(W, D).rotateX(Math.PI / 2);
   const contactPlane = new THREE.Mesh(contactPlaneGeo, new THREE.MeshBasicMaterial({ map: contactTarget.texture, transparent: true, depthWrite: false, opacity: 0.5 }));
@@ -661,13 +779,19 @@ function build(renderer) {
   // the last input was a key: a tapped or clicked link keeps focus, Safari hands it back on a
   // return from another page, and :focus-visible's guess about that differs between browsers.
   let px = -1, py = -1, keyed = false;
+  const launch = new THREE.Vector3();
   function aimAt() {
     const hovered = px < 0 ? null : document.elementFromPoint(px, py)?.closest("[data-room]");
     const focused = keyed ? document.activeElement?.closest("[data-room]") : null;
     const next = (hovered ?? focused)?.dataset.room ?? null;
     if (next === pointing) return;
     if (next === "camera") flashAt = performance.now();
-    if (next === "mail") sentAt = performance.now();
+    if (next === "mail") {
+      // The plane leaves from wherever the laptop is.
+      sentAt = performance.now();
+      flight.points[0].copy(room.worldToLocal(lid.localToWorld(launch.set(0, 0.2, 0))));
+      flight.updateArcLengths();
+    }
     pointing = next;
     wake();
   }
@@ -760,14 +884,15 @@ function build(renderer) {
     const ease = calm || !running() ? 1 : 0.14;
     for (const k in attention) attention[k] += ((pointing === k ? 1 : 0) - attention[k]) * ease;
     const { laptop: l, camera: c, hello: h, pixtuoid: p } = attention;
-    screenGlow.intensity = glowBase + 2.4 * l;
+    // GitHub opens a shut laptop as it lights it.
+    lid.rotation.x = lerp(LID_SHUT, LID_OPEN, Math.max(lidOpen, l));
+    screenGlow.intensity = lidOpen * glowBase + 2.4 * l;
     cam.rotation.y = 0.8 - 0.55 * c;
     cam.position.y = 1.2 + 0.05 * c;
     flash.intensity = calm ? 0 : 7 * Math.max(0, 1 - (now - flashAt) / 380) ** 2;
     head.rotation.x = lerp(head.rotation.x, -0.24, h);
     head.rotation.y = lerp(head.rotation.y, 0.75, h);
     head.rotation.z = lerp(head.rotation.z, 0, h);
-    forearms.forEach((f) => { f.rotation.x *= 1 - h; });
     officeMat.opacity = p;
     for (const n of notes) n.s.scale.setScalar(NOTE_SIZE * (1 + 0.7 * attention.record));
     // In flight the plane eases along its path nose first, rocking; held still, it waits on the laptop.
@@ -815,9 +940,7 @@ function build(renderer) {
       lookY += (aimY - lookY) * 0.04;
       room.rotation.y = look * 0.1 + spin;
       room.rotation.x = lookY * 0.03;
-      torso.scale.y = 1 + Math.sin(t * 1.6) * 0.015;
-      head.rotation.set(0.04 + Math.sin(t * 0.7) * 0.025, 0.34 + Math.sin(t * 0.31) * 0.12, Math.sin(t * 0.5) * 0.03);
-      forearms.forEach((f, i) => { f.rotation.x = Math.sin(t * 11 + i * 1.7) * 0.05 * (0.5 + 0.5 * Math.sin(t * 0.8)); });
+      torso.scale.y = 1 + Math.sin(t * (doing === "sleep" ? 0.9 : 1.6)) * 0.015;
       platter.rotation.y = -t * 3.49;
       for (const n of notes) {
         const k = (t * 0.22 + n.phase) % 1;
@@ -832,9 +955,10 @@ function build(renderer) {
       dust.geometry.attributes.position.needsUpdate = true;
     } else {
       room.rotation.set(0, spin, 0);
-      head.rotation.set(0.04, 0.34, 0);
       for (const n of notes) n.s.material.opacity = 0;
     }
+    act(t, calm);
+    snore(t, calm);
     react(now, calm);
     if (contactStale) drawContact();
     renderer.render(scene, camera);
