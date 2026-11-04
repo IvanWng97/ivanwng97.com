@@ -3,6 +3,8 @@
 // and a handheld, a bookshelf with a camera, a print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { HorizontalBlurShader } from "three/addons/shaders/HorizontalBlurShader.js";
+import { VerticalBlurShader } from "three/addons/shaders/VerticalBlurShader.js";
 import { motion } from "./motion.js";
 import { onTrack } from "./nowplaying.js";
 
@@ -459,13 +461,17 @@ function build(renderer) {
   put(new THREE.IcosahedronGeometry(0.12, 2), clay(C.leaf), [0.04, 1.27, 0.38], shelf);
   put(cyl(0.075, 0.06, 0.13), clay(C.pot), [0.04, 1.17, 0.38], shelf);
 
-  // The floor lamp, warm at night.
-  put(cyl(0.15, 0.17, 0.04), clay(C.ink, 0.5), [-2.0, 0.02, -1.75]);
-  put(cyl(0.018, 0.018, 1.7, 12), clay(C.ink, 0.5), [-2.0, 0.87, -1.75]);
+  // The floor lamp, warm at night. It stands as far from each wall as from the other, so the
+  // light it throws on the two is one shape mirrored across the corner.
+  const LAMP_FROM_WALLS = 0.2;
+  const lampX = sideX + T / 2 + LAMP_FROM_WALLS, lampZ = backZ + T / 2 + LAMP_FROM_WALLS;
+  put(cyl(0.15, 0.17, 0.04), clay(C.ink, 0.5), [lampX, 0.02, lampZ]);
+  put(cyl(0.018, 0.018, 1.7, 12), clay(C.ink, 0.5), [lampX, 0.87, lampZ]);
   const shadeMat = toonMat({ color: "#f7e6c6", roughness: 0.9, side: THREE.DoubleSide, emissive: new THREE.Color("#ffb560"), emissiveIntensity: 0 });
-  put(new THREE.CylinderGeometry(0.15, 0.27, 0.3, 40, 1, true), shadeMat, [-2.0, 1.82, -1.75]);
+  put(new THREE.CylinderGeometry(0.15, 0.27, 0.3, 40, 1, true), shadeMat, [lampX, 1.82, lampZ]);
   const lamp = new THREE.PointLight("#ffb56b", 0, 5.5, 1.5);
-  lamp.position.set(-2.0, 1.65, -1.65);
+  // The bulb sits inside the shade, which throws its light up and down, as a shade does.
+  lamp.position.set(lampX, 1.78, lampZ);
   lamp.castShadow = true;
   lamp.shadow.mapSize.set(512, 512);
   lamp.shadow.radius = 6;
@@ -526,6 +532,70 @@ function build(renderer) {
   );
   room.add(dust);
 
+  // Contact shadows, so what stands on the floor sits on it: the room seen from just above the
+  // rug, looking up, its depth darkened and blurred onto the floor (three.js's
+  // webgl_shadow_contact example). Only what stands within GROUNDED of the floor darkens it.
+  const CONTACT_PX = 1024, GROUNDED = 0.45, RUG_TOP = 0.026;
+  const contactTarget = new THREE.WebGLRenderTarget(CONTACT_PX, CONTACT_PX);
+  const contactBlurTarget = new THREE.WebGLRenderTarget(CONTACT_PX, CONTACT_PX);
+  contactTarget.texture.generateMipmaps = contactBlurTarget.texture.generateMipmaps = false;
+  const contact = new THREE.Group();
+  contact.position.y = RUG_TOP;
+  room.add(contact);
+  const contactPlaneGeo = new THREE.PlaneGeometry(W, D).rotateX(Math.PI / 2);
+  const contactPlane = new THREE.Mesh(contactPlaneGeo, new THREE.MeshBasicMaterial({ map: contactTarget.texture, transparent: true, depthWrite: false, opacity: 0.5 }));
+  contactPlane.renderOrder = 1;
+  contactPlane.scale.y = -1;
+  contact.add(contactPlane);
+  const blurPlane = new THREE.Mesh(contactPlaneGeo);
+  blurPlane.visible = false;
+  contact.add(blurPlane);
+  const contactCamera = new THREE.OrthographicCamera(-W / 2, W / 2, D / 2, -D / 2, 0, GROUNDED);
+  contactCamera.rotation.x = Math.PI / 2;
+  contact.add(contactCamera);
+  const contactDepth = new THREE.MeshDepthMaterial({ depthTest: false, depthWrite: false });
+  contactDepth.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "gl_FragColor = vec4( vec3( 1.0 - fragCoordZ ), opacity );",
+      "gl_FragColor = vec4( vec3( 0.0 ), 1.0 - fragCoordZ );"
+    );
+  };
+  const blurH = new THREE.ShaderMaterial({ ...HorizontalBlurShader, uniforms: THREE.UniformsUtils.clone(HorizontalBlurShader.uniforms), depthTest: false });
+  const blurV = new THREE.ShaderMaterial({ ...VerticalBlurShader, uniforms: THREE.UniformsUtils.clone(VerticalBlurShader.uniforms), depthTest: false });
+  function blurContact(texels) {
+    blurPlane.visible = true;
+    blurPlane.material = blurH;
+    blurH.uniforms.tDiffuse.value = contactTarget.texture;
+    blurH.uniforms.h.value = texels / CONTACT_PX;
+    renderer.setRenderTarget(contactBlurTarget);
+    renderer.render(blurPlane, contactCamera);
+    blurPlane.material = blurV;
+    blurV.uniforms.tDiffuse.value = contactBlurTarget.texture;
+    blurV.uniforms.v.value = texels / CONTACT_PX;
+    renderer.setRenderTarget(contactTarget);
+    renderer.render(blurPlane, contactCamera);
+    blurPlane.visible = false;
+  }
+  // The room is still but for its small loops, so the shadows are drawn once, and again only
+  // when what stands on the floor moves.
+  let contactStale = true;
+  function drawContact() {
+    const clearAlpha = renderer.getClearAlpha();
+    contactPlane.visible = dust.visible = false;
+    scene.overrideMaterial = contactDepth;
+    renderer.setClearAlpha(0);
+    renderer.setRenderTarget(contactTarget);
+    renderer.render(scene, contactCamera);
+    scene.overrideMaterial = null;
+    // The example's two passes: the second, at 0.4 of the first, clears the first's artifacts.
+    blurContact(3);
+    blurContact(1.2);
+    renderer.setRenderTarget(null);
+    renderer.setClearAlpha(clearAlpha);
+    contactPlane.visible = dust.visible = true;
+    contactStale = false;
+  }
+
   // Light.
   const hemi = new THREE.HemisphereLight("#fff3e3", "#d2aa82", 0.9);
   scene.add(hemi);
@@ -535,10 +605,24 @@ function build(renderer) {
   scene.add(sun.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.5, far: 20 });
+  // Edges blurred over a few texels; three.js warns high values band, so the map stays large.
+  sun.shadow.radius = 3;
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
+  // The shadow's frustum hugs the room's bounding sphere, so every texel lands on the room
+  // however far the room leans toward the pointer.
+  sun.updateMatrixWorld();
+  sun.target.updateMatrixWorld();
+  sun.shadow.updateMatrices(sun);
+  const roomSphere = new THREE.Box3().setFromObject(room).getBoundingSphere(new THREE.Sphere());
+  const roomInLight = roomSphere.center.clone().applyMatrix4(sun.shadow.camera.matrixWorldInverse);
+  const reach = roomSphere.radius;
+  Object.assign(sun.shadow.camera, {
+    left: roomInLight.x - reach, right: roomInLight.x + reach, top: roomInLight.y + reach, bottom: roomInLight.y - reach,
+    near: Math.max(0.1, -roomInLight.z - reach), far: -roomInLight.z + reach,
+  });
+  sun.shadow.camera.updateProjectionMatrix();
   const fill = new THREE.DirectionalLight("#cfd9ff", 0.5);
   fill.position.set(6, 5, 6);
   scene.add(fill);
@@ -734,6 +818,7 @@ function build(renderer) {
       for (const n of notes) n.s.material.opacity = 0;
     }
     react(now, calm);
+    if (contactStale) drawContact();
     renderer.render(scene, camera);
     placeLeader();
     if (!shown) { shown = true; canvas.classList.add("ready"); }
