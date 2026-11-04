@@ -632,10 +632,14 @@ function build(renderer) {
     limb([0.5, 0.72, z], [0.43, 0.72, z], 0.012, black, bike);
   }
   put(cyl(0.09, 0.09, 0.012, 32), rimMat, [bb[0], bb[1], 0.06], bike, { cast: false }).rotation.x = Math.PI / 2;
+  // The cranks and pedals turn together about the bottom bracket.
+  const cranks = new THREE.Group();
+  cranks.position.set(...bb);
+  bike.add(cranks);
   for (const s of [-1, 1]) {
-    const crank = put(box(0.022, 0.17, 0.016, 0.006), rimMat, [bb[0] + s * 0.05, bb[1] - s * 0.06, s * 0.075], bike, { cast: false });
+    const crank = put(box(0.022, 0.17, 0.016, 0.006), rimMat, [s * 0.05, -s * 0.06, s * 0.075], cranks, { cast: false });
     crank.rotation.z = s * 0.7;
-    put(box(0.08, 0.018, 0.06, 0.006), black, [bb[0] + s * 0.1, bb[1] - s * 0.12, s * 0.11], bike);
+    put(box(0.08, 0.018, 0.06, 0.006), black, [s * 0.1, -s * 0.12, s * 0.11], cranks);
   }
   const motes = new Float32Array(60 * 3);
   for (let i = 0; i < motes.length; i += 3) {
@@ -805,19 +809,49 @@ function build(renderer) {
   // A sideways drag turns the room like a model on a turntable, as far as SPIN_MAX either way;
   // let go and it settles back.
   const SPIN_MAX = 0.6;
-  let spin = 0, spinTo = 0, dragX = null, dragFrom = 0;
+  let spin = 0, spinTo = 0, dragX = null, dragY = 0, dragFrom = 0;
+  // A click on him, the camera, the record or the bike gets an answer: he looks up at you, the
+  // camera fires, the record spins up and throws out notes, the bike's cranks turn over. A press
+  // that moved further than CLICK_SLOP was a drag.
+  const CLICK_SLOP = 4, POKE_MS = 1400, TAU = Math.PI * 2;
+  const pokeable = { me, camera: cam, record: platter, bike };
+  const pokedAt = { me: -Infinity, camera: -Infinity, record: -Infinity, bike: -Infinity };
+  // A poke's answer rises and falls over POKE_MS, or eases from none to whole for a turn.
+  const rise = (k, now) => { const d = (now - pokedAt[k]) / POKE_MS; return d > 0 && d < 1 ? Math.sin(d * Math.PI) : 0; };
+  const eased = (k, now) => 1 - (1 - THREE.MathUtils.clamp((now - pokedAt[k]) / POKE_MS, 0, 1)) ** 3;
+  const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function pokedBy(e) {
+    const r = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    for (let o = raycaster.intersectObjects(Object.values(pokeable), true)[0]?.object; o; o = o.parent) {
+      for (const k in pokeable) if (pokeable[k] === o) return k;
+    }
+    return null;
+  }
   canvas.addEventListener("pointerdown", (e) => {
     dragX = e.clientX;
+    dragY = e.clientY;
     dragFrom = spinTo;
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (dragX === null) return;
+    if (dragX === null) {
+      if (e.pointerType === "mouse") canvas.style.cursor = motion.on && pokedBy(e) ? "pointer" : "";
+      return;
+    }
     spinTo = THREE.MathUtils.clamp(dragFrom + ((e.clientX - dragX) / canvas.clientWidth) * Math.PI, -SPIN_MAX, SPIN_MAX);
     wake();
   });
   const release = () => { dragX = null; spinTo = 0; wake(); };
-  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointerup", (e) => {
+    const clicked = Math.abs(e.clientX - dragX) < CLICK_SLOP && Math.abs(e.clientY - dragY) < CLICK_SLOP;
+    release();
+    // An answer is motion, so with motion off a click gets none.
+    const k = clicked && motion.on ? pokedBy(e) : null;
+    if (!k) return;
+    pokedAt[k] = performance.now();
+    if (k === "camera") flashAt = pokedAt[k];
+  });
   canvas.addEventListener("pointercancel", release);
   // While a link points into the room, a dotted leader runs from it to its thing, redrawn each
   // frame since the room sways with the pointer. It fades with the attention that drew it.
@@ -883,7 +917,8 @@ function build(renderer) {
     // Between frames nothing eases, so with the loop stopped a change lands whole, never stuck halfway.
     const ease = calm || !running() ? 1 : 0.14;
     for (const k in attention) attention[k] += ((pointing === k ? 1 : 0) - attention[k]) * ease;
-    const { laptop: l, camera: c, hello: h, pixtuoid: p } = attention;
+    const { laptop: l, pixtuoid: p } = attention;
+    const c = Math.max(attention.camera, rise("camera", now)), h = Math.max(attention.hello, rise("me", now));
     // GitHub opens a shut laptop as it lights it.
     lid.rotation.x = lerp(LID_SHUT, LID_OPEN, Math.max(lidOpen, l));
     screenGlow.intensity = lidOpen * glowBase + 2.4 * l;
@@ -894,7 +929,7 @@ function build(renderer) {
     head.rotation.y = lerp(head.rotation.y, 0.75, h);
     head.rotation.z = lerp(head.rotation.z, 0, h);
     officeMat.opacity = p;
-    for (const n of notes) n.s.scale.setScalar(NOTE_SIZE * (1 + 0.7 * attention.record));
+    for (const n of notes) n.s.scale.setScalar(NOTE_SIZE * (1 + 0.7 * Math.max(attention.record, rise("record", now))));
     // In flight the plane eases along its path nose first, rocking; held still, it waits on the laptop.
     const flown = (now - sentAt) / FLIGHT_MS;
     paperPlane.visible = calm ? attention.mail > 0.5 : flown > 0 && flown < 1;
@@ -941,7 +976,8 @@ function build(renderer) {
       room.rotation.y = look * 0.1 + spin;
       room.rotation.x = lookY * 0.03;
       torso.scale.y = 1 + Math.sin(t * (doing === "sleep" ? 0.9 : 1.6)) * 0.015;
-      platter.rotation.y = -t * 3.49;
+      platter.rotation.y = -t * 3.49 - eased("record", now) * TAU * 2;
+      cranks.rotation.z = -eased("bike", now) * TAU * 2;
       for (const n of notes) {
         const k = (t * 0.22 + n.phase) % 1;
         n.s.position.set(1.36 + Math.sin(k * 6 + n.phase * 9) * 0.16, 0.8 + k * 1.2, -1.52);
