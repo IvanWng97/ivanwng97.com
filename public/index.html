@@ -93,8 +93,12 @@
     display: block;
     opacity: 0;
     transition: opacity .6s ease;
+    /* A sideways drag turns the room; a vertical one still scrolls the page. */
+    touch-action: pan-y;
+    cursor: grab;
   }
   #scene.ready { opacity: 1; }
+  #scene:active { cursor: grabbing; }
   /* One switch for every animation on the page; the room, the video and the song bars obey it. */
   .motion {
     position: absolute;

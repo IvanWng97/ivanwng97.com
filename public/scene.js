@@ -678,6 +678,23 @@ function build(renderer) {
   addEventListener("pageshow", () => { keyed = false; aimAt(); });
   document.documentElement.addEventListener("pointerleave", () => { px = py = -1; aimAt(); });
   const lerp = THREE.MathUtils.lerp;
+  // A sideways drag turns the room like a model on a turntable, as far as SPIN_MAX either way;
+  // let go and it settles back.
+  const SPIN_MAX = 0.6;
+  let spin = 0, spinTo = 0, dragX = null, dragFrom = 0;
+  canvas.addEventListener("pointerdown", (e) => {
+    dragX = e.clientX;
+    dragFrom = spinTo;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (dragX === null) return;
+    spinTo = THREE.MathUtils.clamp(dragFrom + ((e.clientX - dragX) / canvas.clientWidth) * Math.PI, -SPIN_MAX, SPIN_MAX);
+    wake();
+  });
+  const release = () => { dragX = null; spinTo = 0; wake(); };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
   // While a link points into the room, a dotted leader runs from it to its thing, redrawn each
   // frame since the room sways with the pointer. It fades with the attention that drew it.
   const leader = document.querySelector(".leader");
@@ -792,10 +809,11 @@ function build(renderer) {
     resize();
     const calm = !motion.on;
     const t = calm ? 0 : (now - t0) / 1000;
+    spin += (spinTo - spin) * (calm ? 1 : 0.12);
     if (!calm) {
       look += (aim - look) * 0.04;
       lookY += (aimY - lookY) * 0.04;
-      room.rotation.y = look * 0.1;
+      room.rotation.y = look * 0.1 + spin;
       room.rotation.x = lookY * 0.03;
       torso.scale.y = 1 + Math.sin(t * 1.6) * 0.015;
       head.rotation.set(0.04 + Math.sin(t * 0.7) * 0.025, 0.34 + Math.sin(t * 0.31) * 0.12, Math.sin(t * 0.5) * 0.03);
@@ -813,7 +831,7 @@ function build(renderer) {
       }
       dust.geometry.attributes.position.needsUpdate = true;
     } else {
-      room.rotation.set(0, 0, 0);
+      room.rotation.set(0, spin, 0);
       head.rotation.set(0.04, 0.34, 0);
       for (const n of notes) n.s.material.opacity = 0;
     }
