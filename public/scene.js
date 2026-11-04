@@ -573,13 +573,13 @@ function build(renderer) {
   let pointing = null, flashAt = -Infinity, sentAt = -Infinity;
   // What is pointed at is asked of the page, not tracked from enter and leave events: a scroll
   // moves links out from under a still mouse and some browsers send no leave for it. The mouse's
-  // spot is hit-tested on every move and scroll; a touch never hovers; focus counts only when the
-  // keyboard put it there, since a clicked link keeps focus after the mouse has gone.
-  let px = -1, py = -1;
+  // spot is hit-tested on every move and scroll, and a touch never hovers. Focus counts only while
+  // the last input was a key: a tapped or clicked link keeps focus, Safari hands it back on a
+  // return from another page, and :focus-visible's guess about that differs between browsers.
+  let px = -1, py = -1, keyed = false;
   function aimAt() {
     const hovered = px < 0 ? null : document.elementFromPoint(px, py)?.closest("[data-room]");
-    const active = document.activeElement;
-    const focused = active?.matches(":focus-visible") ? active.closest("[data-room]") : null;
+    const focused = keyed ? document.activeElement?.closest("[data-room]") : null;
     const next = (hovered ?? focused)?.dataset.room ?? null;
     if (next === pointing) return;
     if (next === "camera") flashAt = performance.now();
@@ -589,6 +589,9 @@ function build(renderer) {
   }
   addEventListener("focusin", aimAt);
   addEventListener("focusout", () => setTimeout(aimAt));
+  addEventListener("keydown", () => { keyed = true; }, true);
+  addEventListener("pointerdown", () => { keyed = false; aimAt(); }, true);
+  addEventListener("pageshow", () => { keyed = false; aimAt(); });
   document.documentElement.addEventListener("pointerleave", () => { px = py = -1; aimAt(); });
   const lerp = THREE.MathUtils.lerp;
   // While a link points into the room, a dotted leader runs from it to its thing, redrawn each
