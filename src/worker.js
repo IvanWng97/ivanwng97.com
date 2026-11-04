@@ -147,11 +147,14 @@ async function status(env) {
   return Response.json({ healthy, consentedAt, renewBy }, { headers: { "cache-control": "no-store" } });
 }
 
-// The site's palette, from public/index.html's :root, so the README card matches the page.
-const CARD_THEMES = {
-  light: { bg: "#f6f4fb", line: "#dcd9ea", text: "#17162b", muted: "#4a4866", accent: "#5b3fd1" },
-  dark: { bg: "#1a1c45", line: "#2c2e5a", text: "#f3f0ea", muted: "#b9b6cf", accent: "#ffcf8a" },
-};
+// The README card's colours are read from the site's own theme.css (its first :root block is the
+// light theme, its second the dark), so the card can't drift from the page.
+async function palette(env, url, theme) {
+  const css = await (await env.ASSETS.fetch(new URL("/theme.css", url))).text();
+  const blocks = [...css.matchAll(/:root\s*\{([^}]*)\}/g)];
+  const vars = Object.fromEntries([...blocks[theme === "dark" ? 1 : 0][1].matchAll(/--([\w-]+):\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()]));
+  return { bg: vars["sky-low"], text: vars.text, muted: vars.muted, accent: vars.accent, line: vars.line };
+}
 const xml = (s) => s.replace(/[<>&'"]/g, (c) => `&#${c.charCodeAt(0)};`);
 // Cut to a width counted in half-em columns, a CJK character or an emoji taking two, and never
 // inside a grapheme, so a long Chinese title stays on the card and no emoji breaks in half.
@@ -182,8 +185,7 @@ async function coverData(url) {
 // show both at one height and they scale alike. Columns are the text width left beside the cover.
 const CARD = { width: 420, height: 195, radius: 18, cover: 131, inset: 32, textX: 190, titleColumns: 18, artistColumns: 24 };
 
-async function card(track, theme) {
-  const c = CARD_THEMES[theme] ?? CARD_THEMES.light;
+async function card(track, c) {
   const { width, height, radius, cover: side, inset, textX } = CARD;
   const cover = await coverData(track?.cover);
   const said = !track ? "Not listening right now" : track.playing ? "Listening to" : "Last played";
@@ -222,7 +224,7 @@ async function route(request, env, ctx) {
     }
     const headers = { "cache-control": `public, max-age=${FRESH_SECONDS}` };
     const res = svg
-      ? new Response(await card(track, theme), { headers: { ...headers, "content-type": "image/svg+xml; charset=utf-8" } })
+      ? new Response(await card(track, await palette(env, url, theme)), { headers: { ...headers, "content-type": "image/svg+xml; charset=utf-8" } })
       : Response.json(track, { headers });
     ctx.waitUntil(caches.default.put(key, res.clone()));
     return res;

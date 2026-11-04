@@ -4,8 +4,13 @@ compatibility_date = "2026-11-03"
 
 [assets]
 directory = "./public/"
+binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
+
+# Without this the Worker's console.error lines, its only failure signal, are not kept.
+[observability]
+enabled = true
 
 [vars]
 SPOTIFY_CLIENT_ID = "4a7050d2a5964d4f99f4707fedf8b7aa"

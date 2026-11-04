@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-renders the images derived from the live room, so they never drift from it: og.jpg (dark)
-# and og-light.jpg, the share cards that the GitHub profile README also shows, and room.jpg, the
-# no-WebGL fallback. Run it after any change to how the room or the hero looks:
+# and og-light.jpg, the share cards that the GitHub profile README also shows, and room.jpg and
+# room-light.jpg, the no-WebGL fallback in each theme. Run it after any change to how the room or the hero looks:
 #
 #   scripts/render-images.sh
 #
@@ -45,7 +45,8 @@ shoot() {
     --window-size="$width,$height" --force-device-scale-factor=2 --virtual-time-budget=15000 \
     "$@" "http://127.0.0.1:$port/" >/dev/null 2>&1
 }
-shoot --screenshot="$work/light.png"
+# Each theme is forced: headless Chrome otherwise follows the Mac's own appearance.
+shoot --blink-settings=preferredColorScheme=1 --screenshot="$work/light.png"
 shoot --force-dark-mode --blink-settings=preferredColorScheme=0 --screenshot="$work/dark.png"
 
 python3 -I - "$work" "$public" <<'PY'
@@ -58,8 +59,7 @@ ROOM = (1186, 100, 2448, 1362)
 for theme, name in (("dark", "og.jpg"), ("light", "og-light.jpg")):
     shot = Image.open(f"{work}/{theme}.png").convert("RGB")
     shot.crop(HERO).resize((1200, 628), Image.LANCZOS).save(f"{public}/{name}", quality=88)
-dark = Image.open(f"{work}/dark.png").convert("RGB")
-dark.crop(ROOM).resize((1200, 1200), Image.LANCZOS).save(f"{public}/room.jpg", quality=86)
+    shot.crop(ROOM).resize((1200, 1200), Image.LANCZOS).save(f"{public}/{name.replace('og', 'room')}", quality=86)
 PY
 
-echo "Rendered og.jpg, og-light.jpg and room.jpg into $public"
+echo "Rendered og.jpg, og-light.jpg, room.jpg and room-light.jpg into $public"

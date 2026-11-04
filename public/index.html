@@ -19,45 +19,22 @@
 <meta name="theme-color" content="#110f26" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://ivanwng97.com/">
 <link rel="icon" href="https://avatars.githubusercontent.com/u/39482599?v=4&s=64">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400;500&display=swap">
-<!-- Ahead of every module load, the preloads included: some browsers take one import map, and only before any module loads (MDN, script type="importmap"). -->
+<link rel="stylesheet" href="/theme.css">
+<link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<!-- Ahead of every module load, the preloads included: some browsers take one import map, and only before any module loads (MDN, script type="importmap"). three.js r170 is vendored under /vendor/three. -->
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three": "/vendor/three/three.module.min.js",
+  "three/addons/": "/vendor/three/addons/"
 } }
 </script>
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" crossorigin>
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/geometries/RoundedBoxGeometry.js" crossorigin>
+<link rel="modulepreload" href="/vendor/three/three.module.min.js">
+<link rel="modulepreload" href="/vendor/three/addons/geometries/RoundedBoxGeometry.js">
 <link rel="modulepreload" href="/scene.js">
+<link rel="modulepreload" href="/motion.js">
+<link rel="modulepreload" href="/nowplaying.js">
 <style>
-  /* Night in the room; by day, the same room in morning light. */
-  :root {
-    --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-    --body: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, monospace;
-    --sky-top: #e9e6fb;
-    --sky-low: #f6f4fb;
-    --text: #17162b;
-    --muted: #4a4866;
-    --accent: #5b3fd1;
-    --glow: rgba(120, 96, 255, .18);
-    --line: rgba(23, 22, 43, .12);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --sky-top: #0d0b20;
-      --sky-low: #1a1c45;
-      --text: #f3f0ea;
-      --muted: #b9b6cf;
-      --accent: #ffcf8a;
-      --glow: rgba(255, 190, 120, .16);
-      --line: rgba(243, 240, 234, .12);
-    }
-  }
-
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
@@ -314,7 +291,10 @@
   </div>
   <div class="stage">
     <canvas id="scene" aria-hidden="true"></canvas>
-    <img class="fallback" src="/room.jpg" width="1200" height="1200" loading="lazy" alt="A cartoon of Ivan on a sofa with his laptop: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, headphones on one sofa arm and a handheld console on the other, a game controller on the seat, a sunset print on the wall, and his road bike on a stand.">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="/room.jpg">
+      <img class="fallback" src="/room-light.jpg" width="1200" height="1200" loading="lazy" alt="A cartoon of Ivan on a sofa with his laptop: a floor lamp, a bookshelf with a camera, a turntable playing by the balcony door, headphones on one sofa arm and a handheld console on the other, a game controller on the seat, a sunset print on the wall, and his road bike on a stand.">
+    </picture>
     <noscript><style>#scene { display: none; } .fallback { display: block; }</style></noscript>
     <button type="button" class="motion" aria-label="Pause animations" aria-pressed="false"><svg class="pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><svg class="play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 4 2.5z"/></svg></button>
   </div>
@@ -343,68 +323,8 @@
 
 <svg class="leader" aria-hidden="true"><path class="under"/><path/><circle class="halo" r="11"/><circle r="4.5"/></svg>
 
-<script type="module">
-  // The page's one motion switch (WCAG 2.2.2 asks that motion can be paused): off to begin with
-  // under reduced motion, flipped by the stage's button. Everything that moves reads window.motion
-  // and listens for the "motion" event; CSS reads <html data-motion>.
-  const calm = matchMedia("(prefers-reduced-motion: reduce)");
-  const button = document.querySelector(".motion");
-  window.motion = { on: !calm.matches };
-  function setMotion(on) {
-    window.motion.on = on;
-    document.documentElement.dataset.motion = on ? "on" : "off";
-    button.setAttribute("aria-pressed", String(!on));
-    dispatchEvent(new CustomEvent("motion"));
-  }
-  button.addEventListener("click", () => setMotion(!window.motion.on));
-  calm.addEventListener("change", () => setMotion(!calm.matches));
-  setMotion(window.motion.on);
-</script>
-<script type="module">
-  // What Ivan is playing on Spotify, asked again each minute while the tab is shown. The room
-  // reads window.nowPlaying and the "nowplaying" event to put the cover on the record's label.
-  const REFRESH_MS = 60_000;
-  const line = document.querySelector(".listening");
-  async function listen() {
-    if (document.hidden) return;
-    const track = await fetch("/api/now-playing").then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    line.hidden = !track;
-    if (track) {
-      line.classList.toggle("live", track.playing);
-      line.querySelector(".said").textContent = track.playing ? "Listening to" : "Last played";
-      const link = line.querySelector(".track");
-      link.textContent = track.title;
-      link.href = track.url;
-      line.querySelector(".by").textContent = ` by ${track.artist}`;
-    }
-    window.nowPlaying = track;
-    dispatchEvent(new CustomEvent("nowplaying", { detail: track }));
-  }
-  listen();
-  setInterval(listen, REFRESH_MS);
-  document.addEventListener("visibilitychange", listen);
-</script>
 <script type="module" src="/scene.js"></script>
-<script type="module">
-  // The office plays only while it's on screen and motion is on.
-  const video = document.querySelector(".window video");
-  let onScreen = false;
-  const sync = () => { if (onScreen && window.motion.on) video.play().catch(() => {}); else video.pause(); };
-  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; sync(); }).observe(video);
-  addEventListener("motion", sync);
-  for (const button of document.querySelectorAll("[data-copy]")) {
-    button.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(button.dataset.copy);
-        button.textContent = "Copied";
-      } catch {
-        getSelection().selectAllChildren(button.previousElementSibling);
-        button.textContent = "Selected";
-      }
-      setTimeout(() => { button.textContent = "Copy"; }, 1600);
-    });
-  }
-</script>
+<script type="module" src="/page.js"></script>
 <!-- Cloudflare Web Analytics: no cookies; the automatic injection skips Workers static assets, so it is installed by hand. -->
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "ab4df3bc4d3d47e6926c70d2385b8055"}'></script>
 </body>

@@ -3,6 +3,8 @@
 // and a handheld, a bookshelf with a camera, a print above the sofa, his road bike. Night swaps the sun for the lamp, the laptop and the city.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { motion } from "./motion.js";
+import { onTrack } from "./nowplaying.js";
 
 const canvas = document.getElementById("scene");
 const dark = matchMedia("(prefers-color-scheme: dark)");
@@ -355,8 +357,7 @@ function build(renderer) {
       wake();
     });
   }
-  showCover(window.nowPlaying);
-  addEventListener("nowplaying", (e) => showCover(e.detail));
+  onTrack(showCover);
   put(box(0.04, 0.006, 0.01, 0.002), clay("#fff"), [0.03, 0.011, 0], platter, { cast: false });
   put(box(0.015, 0.015, 0.26, 0.006), rimMat, [1.62, 0.68, -1.52]).rotation.y = 0.45;
   for (const [i, c] of [[0, C.coral], [1, C.sage], [2, C.mustard]]) put(box(0.035, 0.42, 0.42, 0.01), clay(c), [2.02 + i * 0.045, 0.22, -1.05 + i * 0.02]).rotation.z = -0.1;
@@ -705,7 +706,7 @@ function build(renderer) {
 
   function draw(now = performance.now()) {
     resize();
-    const calm = !window.motion.on;
+    const calm = !motion.on;
     const t = calm ? 0 : (now - t0) / 1000;
     if (!calm) {
       look += (aim - look) * 0.04;
@@ -738,7 +739,7 @@ function build(renderer) {
     if (!shown) { shown = true; canvas.classList.add("ready"); }
   }
 
-  const running = () => visible && !document.hidden && window.motion.on;
+  const running = () => visible && !document.hidden && motion.on;
   function loop(now) {
     draw(now);
     frame = running() ? requestAnimationFrame(loop) : 0;
@@ -753,7 +754,7 @@ function build(renderer) {
   }
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
   document.addEventListener("visibilitychange", wake);
-  addEventListener("motion", wake);
+  motion.subscribe(wake);
   dark.addEventListener("change", () => { applyTheme(); draw(); });
   new ResizeObserver(() => draw()).observe(canvas);
   wake();

@@ -6,15 +6,8 @@
 <title>Not found · Ivan</title>
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="https://avatars.githubusercontent.com/u/39482599?v=4&s=64">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Geist:wght@400&display=swap">
+<link rel="stylesheet" href="/theme.css">
 <style>
-  /* The home page's palette, so a wrong link still lands in the same room. */
-  :root { --sky-top: #e9e6fb; --sky-low: #f6f4fb; --text: #17162b; --muted: #4a4866; --accent: #5b3fd1; }
-  @media (prefers-color-scheme: dark) {
-    :root { --sky-top: #0d0b20; --sky-low: #1a1c45; --text: #f3f0ea; --muted: #b9b6cf; --accent: #ffcf8a; }
-  }
   body {
     margin: 0;
     min-height: 100vh;
@@ -24,10 +17,10 @@
     box-sizing: border-box;
     color: var(--text);
     background: linear-gradient(180deg, var(--sky-top), var(--sky-low)) fixed;
-    font: 18px/1.6 Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 18px/1.6 var(--body);
   }
   h1 {
-    font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--display);
     font-variation-settings: "opsz" 96;
     font-weight: 800;
     font-size: clamp(2.5rem, 8vw, 4.5rem);
