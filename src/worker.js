@@ -1,6 +1,7 @@
 // The site's dynamic routes, all about Spotify; every other path is a static asset, served before
 // this code runs (run_worker_first in wrangler.toml).
 //   /api/now-playing      the track Ivan is playing, else the last one he played, for the turntable
+//   /api/now-playing.svg  the same as a card, ?theme=light|dark, for his GitHub profile README
 //   /api/spotify/login    starts Spotify's consent (open it on any device signed in to Spotify)
 //   /api/spotify/callback where the consent returns: stores the account's refresh token
 //
@@ -126,23 +127,70 @@ async function listening(env) {
   return describe((await recent.json()).items?.[0]?.track, false);
 }
 
+// The site's palette, from public/index.html's :root, so the README card matches the page.
+const CARD_THEMES = {
+  light: { bg: "#f6f4fb", line: "#dcd9ea", text: "#17162b", muted: "#4a4866", accent: "#5b3fd1" },
+  dark: { bg: "#1a1c45", line: "#2c2e5a", text: "#f3f0ea", muted: "#b9b6cf", accent: "#ffcf8a" },
+};
+const CARD_TEXT_MAX = 34;
+const xml = (s) => s.replace(/[<>&'"]/g, (c) => `&#${c.charCodeAt(0)};`);
+const clip = (s) => (s.length > CARD_TEXT_MAX ? `${s.slice(0, CARD_TEXT_MAX - 1)}…` : s);
+
+// An image in a README can't fetch anything, so the cover rides inside as a data URI.
+async function coverData(url) {
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return `data:${res.headers.get("content-type") ?? "image/jpeg"};base64,${btoa(binary)}`;
+}
+
+async function card(track, theme) {
+  const c = CARD_THEMES[theme] ?? CARD_THEMES.light;
+  const cover = await coverData(track?.cover);
+  const said = !track ? "Not listening right now" : track.playing ? "Listening to" : "Last played";
+  // Three bars that dance only while a song is actually playing.
+  const bars = [0, 1, 2].map((i) => {
+    const x = 104 + i * 5;
+    const dance = track?.playing ? `<animate attributeName="height" values="4;10;4" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/><animate attributeName="y" values="30;24;30" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/>` : "";
+    return `<rect x="${x}" y="30" width="3" height="4" rx="1" fill="${c.accent}">${dance}</rect>`;
+  }).join("");
+  const art = cover
+    ? `<clipPath id="r"><rect x="16" y="16" width="64" height="64" rx="10"/></clipPath><image href="${cover}" x="16" y="16" width="64" height="64" clip-path="url(#r)"/>`
+    : `<rect x="16" y="16" width="64" height="64" rx="10" fill="${c.line}"/>`;
+  const lines = track
+    ? `<text x="96" y="56" fill="${c.text}" font-size="17" font-weight="600">${xml(clip(track.title))}</text><text x="96" y="78" fill="${c.muted}" font-size="14">${xml(clip(track.artist))}</text>`
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="96" viewBox="0 0 420 96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans', sans-serif"><title>${xml(track ? `${said} ${track.title} by ${track.artist}` : said)}</title><rect x="0.5" y="0.5" width="419" height="95" rx="18" fill="${c.bg}" stroke="${c.line}"/>${art}${bars}<text x="${track ? 124 : 96}" y="34" fill="${c.muted}" font-size="13">${said}</text>${lines}</svg>`;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
     if (url.pathname === "/api/spotify/login") return login(url, env);
     if (url.pathname === CALLBACK_PATH) return callback(request, url, env);
-    if (url.pathname !== "/api/now-playing") return text("Not found", 404);
-    const key = new Request(url.origin + url.pathname);
+    const svg = url.pathname === "/api/now-playing.svg";
+    if (!svg && url.pathname !== "/api/now-playing") return text("Not found", 404);
+    const theme = url.searchParams.get("theme") === "dark" ? "dark" : "light";
+    const key = new Request(url.origin + url.pathname + (svg ? `?theme=${theme}` : ""));
     const hit = await caches.default.match(key);
     if (hit) return hit;
+    let track;
     try {
-      const res = Response.json(await listening(env), { headers: { "cache-control": `public, max-age=${FRESH_SECONDS}` } });
-      ctx.waitUntil(caches.default.put(key, res.clone()));
-      return res;
+      track = await listening(env);
     } catch (error) {
       console.error("now-playing failed", { error: String(error) });
-      return Response.json(null, { status: 502, headers: { "cache-control": "no-store" } });
+      if (!svg) return Response.json(null, { status: 502, headers: { "cache-control": "no-store" } });
+      track = null;
     }
+    const headers = { "cache-control": `public, max-age=${FRESH_SECONDS}` };
+    const res = svg
+      ? new Response(await card(track, theme), { headers: { ...headers, "content-type": "image/svg+xml; charset=utf-8" } })
+      : Response.json(track, { headers });
+    ctx.waitUntil(caches.default.put(key, res.clone()));
+    return res;
   },
 };
