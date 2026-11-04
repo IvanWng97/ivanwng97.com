@@ -5,7 +5,6 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 const canvas = document.getElementById("scene");
-const still = matchMedia("(prefers-reduced-motion: reduce)");
 const dark = matchMedia("(prefers-color-scheme: dark)");
 
 let renderer;
@@ -609,6 +608,32 @@ function build(renderer) {
     pixtuoid: () => office.localToWorld(anchor.set(0, -0.3, 0)),
   };
   let last = null;
+  const onScreen = (x, y) => x >= 0 && x <= innerWidth && y >= 0 && y <= innerHeight;
+  // A leader is drawn only where it can cross no words and no other link. A project's picture
+  // rises straight from its top edge into the room. A link beside the room steps into the lane
+  // next to its group (above it from the top row, below it from any lower row, so it never
+  // passes another row), runs right along that lane to the room's edge, then turns to the thing.
+  // Where the room sits above the links any leader would cut through them, so the room's own
+  // reaction is the whole answer there; and nothing is drawn with either end off screen.
+  const LANE = 10, BEND = 6;
+  function route(el, tx, ty, cr) {
+    const figure = el.querySelector("figure");
+    if (figure) {
+      const r = figure.getBoundingClientRect(), sx = r.left + r.width / 2, sy = r.top - BEND;
+      if (!onScreen(sx, sy)) return null;
+      const my = (sy + ty) / 2;
+      return `M${sx} ${sy}C${sx} ${my} ${tx} ${my} ${tx} ${ty}`;
+    }
+    const link = el.matches("a") ? el : el.querySelector("a");
+    const r = link.getBoundingClientRect();
+    if (cr.left <= r.right) return null;
+    const group = (link.closest(".social, .listening") ?? link).getBoundingClientRect();
+    const topRow = r.top - group.top < r.height / 2, dir = topRow ? -1 : 1;
+    const sx = r.left + r.width / 2, sy = topRow ? r.top : r.bottom;
+    const gy = topRow ? group.top - LANE : group.bottom + LANE, gx = cr.left;
+    if (!onScreen(sx, sy)) return null;
+    return `M${sx} ${sy}L${sx} ${gy - dir * BEND}Q${sx} ${gy} ${sx + BEND} ${gy}L${gx} ${gy}C${(gx + tx) / 2} ${gy} ${tx} ${(gy + ty) / 2} ${tx} ${ty}`;
+  }
   function placeLeader() {
     if (!leader) return;
     if (pointing) last = pointing;
@@ -618,22 +643,16 @@ function build(renderer) {
     const el = pointers.get(last), cr = canvas.getBoundingClientRect();
     const v = anchors[last]().project(camera);
     const tx = cr.left + ((v.x + 1) / 2) * cr.width, ty = cr.top + ((1 - v.y) / 2) * cr.height;
-    // It leaves the top of the link (of a project's picture), so it crosses no other link. Beside
-    // the room it runs right along the gap above the links before rising, clear of the words.
-    const from = el.querySelector("figure") ?? el, r = from.getBoundingClientRect(), sx = r.left + r.width / 2, sy = r.top - 8;
-    if (r.bottom < 0 || r.top > innerHeight) { leader.style.opacity = "0"; return; }
-    let d;
-    if (from === el && cr.left > r.right) {
-      const gy = sy - 10, gx = cr.left;
-      d = `M${sx} ${sy}Q${sx} ${gy} ${sx + 12} ${gy}L${gx} ${gy}C${(gx + tx) / 2} ${gy} ${tx} ${(gy + ty) / 2} ${tx} ${ty}`;
-    } else {
-      const my = (sy + ty) / 2;
-      d = `M${sx} ${sy}C${sx} ${my} ${tx} ${my} ${tx} ${ty}`;
+    const d = onScreen(tx, ty) ? route(el, tx, ty, cr) : null;
+    if (!d) {
+      leader.style.opacity = "0";
+      return;
     }
     for (const path of trails) path.setAttribute("d", d);
     for (const c of dots) { c.setAttribute("cx", tx); c.setAttribute("cy", ty); }
   }
-  addEventListener("scroll", () => { aimAt(); if (last && !frame) draw(); }, { passive: true });
+  // A scroll changes nothing in the room, only where the leader's ends sit on screen.
+  addEventListener("scroll", () => { aimAt(); if (!frame) placeLeader(); }, { passive: true });
   function react(now, calm) {
     // Between frames nothing eases, so with the loop stopped a change lands whole, never stuck halfway.
     const ease = calm || !running() ? 1 : 0.14;
@@ -686,7 +705,7 @@ function build(renderer) {
 
   function draw(now = performance.now()) {
     resize();
-    const calm = still.matches;
+    const calm = !window.motion.on;
     const t = calm ? 0 : (now - t0) / 1000;
     if (!calm) {
       look += (aim - look) * 0.04;
@@ -719,7 +738,7 @@ function build(renderer) {
     if (!shown) { shown = true; canvas.classList.add("ready"); }
   }
 
-  const running = () => visible && !document.hidden && !still.matches;
+  const running = () => visible && !document.hidden && window.motion.on;
   function loop(now) {
     draw(now);
     frame = running() ? requestAnimationFrame(loop) : 0;
@@ -734,7 +753,7 @@ function build(renderer) {
   }
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
   document.addEventListener("visibilitychange", wake);
-  still.addEventListener("change", wake);
+  addEventListener("motion", wake);
   dark.addEventListener("change", () => { applyTheme(); draw(); });
   new ResizeObserver(() => draw()).observe(canvas);
   wake();

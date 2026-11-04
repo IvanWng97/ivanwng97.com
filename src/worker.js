@@ -4,6 +4,8 @@
 //   /api/now-playing.svg  the same as a card, ?theme=light|dark, for his GitHub profile README
 //   /api/spotify/login    starts Spotify's consent (open it on any device signed in to Spotify)
 //   /api/spotify/callback where the consent returns: stores the account's refresh token
+//   /api/spotify/status   whether the token still works and when it must be renewed, which the
+//                         profile repo's daily check reads so a lapse never goes unnoticed
 //
 // The flow is PKCE, so no client secret exists. The refresh token lives in KV rather than in a
 // secret because Spotify may answer a refresh with a new one, and the Worker has to keep the
@@ -24,6 +26,10 @@ const FRESH_SECONDS = 30;
 // KV refuses a TTL under 60 s; the margin keeps a cached token from expiring mid-request.
 const KV_MIN_TTL = 60;
 const COVER_MAX_PX = 300;
+// A refresh token dies six months after its consent, and refreshing never extends it:
+// https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens
+const CONSENT_LIFETIME_DAYS = 182;
+const DAY_MS = 86_400_000;
 
 const FORM = { "content-type": "application/x-www-form-urlencoded" };
 const text = (body, status = 200) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -80,6 +86,7 @@ async function callback(request, url, env) {
   if (owner && owner !== id) return text("This page already shows another Spotify account.", 403);
   if (!owner) await env.SPOTIFY.put("owner", id);
   await keepToken(env, token);
+  await env.SPOTIFY.put("consented_at", new Date().toISOString());
   return text("Done. The turntable now plays what you play.");
 }
 
@@ -127,14 +134,38 @@ async function listening(env) {
   return describe((await recent.json()).items?.[0]?.track, false);
 }
 
+async function status(env) {
+  const consentedAt = await env.SPOTIFY.get("consented_at");
+  let healthy = true;
+  try {
+    await accessToken(env);
+  } catch (error) {
+    healthy = false;
+    console.error("spotify status unhealthy", { error: String(error) });
+  }
+  const renewBy = consentedAt && new Date(Date.parse(consentedAt) + CONSENT_LIFETIME_DAYS * DAY_MS).toISOString();
+  return Response.json({ healthy, consentedAt, renewBy }, { headers: { "cache-control": "no-store" } });
+}
+
 // The site's palette, from public/index.html's :root, so the README card matches the page.
 const CARD_THEMES = {
   light: { bg: "#f6f4fb", line: "#dcd9ea", text: "#17162b", muted: "#4a4866", accent: "#5b3fd1" },
   dark: { bg: "#1a1c45", line: "#2c2e5a", text: "#f3f0ea", muted: "#b9b6cf", accent: "#ffcf8a" },
 };
-const CARD_TEXT_MAX = 34;
 const xml = (s) => s.replace(/[<>&'"]/g, (c) => `&#${c.charCodeAt(0)};`);
-const clip = (s) => (s.length > CARD_TEXT_MAX ? `${s.slice(0, CARD_TEXT_MAX - 1)}…` : s);
+// Cut to a width counted in half-em columns, a CJK character or an emoji taking two, and never
+// inside a grapheme, so a long Chinese title stays on the card and no emoji breaks in half.
+const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]|\p{Extended_Pictographic}/u;
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function clip(s, columns) {
+  let used = 0, out = "";
+  for (const { segment } of graphemes.segment(s)) {
+    used += WIDE.test(segment) ? 2 : 1;
+    if (used > columns - 1) return `${out}…`;
+    out += segment;
+  }
+  return s;
+}
 
 // An image in a README can't fetch anything, so the cover rides inside as a data URI.
 async function coverData(url) {
@@ -147,44 +178,47 @@ async function coverData(url) {
   return `data:${res.headers.get("content-type") ?? "image/jpeg"};base64,${btoa(binary)}`;
 }
 
+// Drawn at the GitHub stats card's height, borderless with its corner radius, so the README can
+// show both at one height and they scale alike. Columns are the text width left beside the cover.
+const CARD = { width: 420, height: 195, radius: 18, cover: 131, inset: 32, textX: 190, titleColumns: 18, artistColumns: 24 };
+
 async function card(track, theme) {
   const c = CARD_THEMES[theme] ?? CARD_THEMES.light;
+  const { width, height, radius, cover: side, inset, textX } = CARD;
   const cover = await coverData(track?.cover);
   const said = !track ? "Not listening right now" : track.playing ? "Listening to" : "Last played";
   // Three bars that dance only while a song is actually playing.
   const bars = [0, 1, 2].map((i) => {
-    const x = 104 + i * 5;
-    const dance = track?.playing ? `<animate attributeName="height" values="4;10;4" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/><animate attributeName="y" values="30;24;30" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/>` : "";
-    return `<rect x="${x}" y="30" width="3" height="4" rx="1" fill="${c.accent}">${dance}</rect>`;
+    const dance = track?.playing ? `<animate attributeName="height" values="5;14;5" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/><animate attributeName="y" values="64;55;64" dur="0.9s" begin="-${i * 0.3}s" repeatCount="indefinite"/>` : "";
+    return `<rect x="${textX + i * 6}" y="64" width="4" height="5" rx="1" fill="${c.accent}">${dance}</rect>`;
   }).join("");
   const art = cover
-    ? `<clipPath id="r"><rect x="16" y="16" width="64" height="64" rx="10"/></clipPath><image href="${cover}" x="16" y="16" width="64" height="64" clip-path="url(#r)"/>`
-    : `<rect x="16" y="16" width="64" height="64" rx="10" fill="${c.line}"/>`;
+    ? `<clipPath id="r"><rect x="${inset}" y="${inset}" width="${side}" height="${side}" rx="14"/></clipPath><image href="${cover}" x="${inset}" y="${inset}" width="${side}" height="${side}" clip-path="url(#r)"/>`
+    : `<rect x="${inset}" y="${inset}" width="${side}" height="${side}" rx="14" fill="${c.line}"/>`;
   const lines = track
-    ? `<text x="96" y="56" fill="${c.text}" font-size="17" font-weight="600">${xml(clip(track.title))}</text><text x="96" y="78" fill="${c.muted}" font-size="14">${xml(clip(track.artist))}</text>`
+    ? `<text x="${textX}" y="108" fill="${c.text}" font-size="22" font-weight="600">${xml(clip(track.title, CARD.titleColumns))}</text><text x="${textX}" y="138" fill="${c.muted}" font-size="17">${xml(clip(track.artist, CARD.artistColumns))}</text>`
     : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="96" viewBox="0 0 420 96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans', sans-serif"><title>${xml(track ? `${said} ${track.title} by ${track.artist}` : said)}</title><rect x="0.5" y="0.5" width="419" height="95" rx="18" fill="${c.bg}" stroke="${c.line}"/>${art}${bars}<text x="${track ? 124 : 96}" y="34" fill="${c.muted}" font-size="13">${said}</text>${lines}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans', sans-serif"><title>${xml(track ? `${said} ${track.title} by ${track.artist}` : said)}</title><rect width="${width}" height="${height}" rx="${radius}" fill="${c.bg}"/>${art}${track ? bars : ""}<text x="${track ? textX + 24 : textX}" y="${track ? 69 : 104}" fill="${c.muted}" font-size="15">${said}</text>${lines}</svg>`;
 }
 
-export default {
-  async fetch(request, env, ctx) {
+async function route(request, env, ctx) {
     const url = new URL(request.url);
-    if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
     if (url.pathname === "/api/spotify/login") return login(url, env);
     if (url.pathname === CALLBACK_PATH) return callback(request, url, env);
+    if (url.pathname === "/api/spotify/status") return status(env);
     const svg = url.pathname === "/api/now-playing.svg";
     if (!svg && url.pathname !== "/api/now-playing") return text("Not found", 404);
     const theme = url.searchParams.get("theme") === "dark" ? "dark" : "light";
     const key = new Request(url.origin + url.pathname + (svg ? `?theme=${theme}` : ""));
     const hit = await caches.default.match(key);
     if (hit) return hit;
-    let track;
+    // A failure reads as nothing playing and is cached like an answer, so a lapsed token isn't
+    // sent to Spotify again by every visitor; /api/spotify/status is where a failure shows.
+    let track = null;
     try {
       track = await listening(env);
     } catch (error) {
       console.error("now-playing failed", { error: String(error) });
-      if (!svg) return Response.json(null, { status: 502, headers: { "cache-control": "no-store" } });
-      track = null;
     }
     const headers = { "cache-control": `public, max-age=${FRESH_SECONDS}` };
     const res = svg
@@ -192,5 +226,15 @@ export default {
       : Response.json(track, { headers });
     ctx.waitUntil(caches.default.put(key, res.clone()));
     return res;
+}
+
+export default {
+  // HEAD answers as GET does, without the body (RFC 9110 §9.1: servers support GET and HEAD).
+  async fetch(request, env, ctx) {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+    }
+    const res = await route(request, env, ctx);
+    return request.method === "HEAD" ? new Response(null, res) : res;
   },
 };
